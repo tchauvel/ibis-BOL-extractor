@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBIS PDF Extractor — PDF to Structured Data</title>
+    <meta name="description" content="Upload PDFs and extract structured JSON data from shipping documents, bills of lading, and more.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header" id="main-header">
+            <div class="logo-group">
+                <div class="logo-icon">
+                    <img src="/static/logo.png" alt="Ibis Labs Logo" style="max-height: 38px;">
+                </div>
+                <div>
+                    <h1>Bills of Lading Extractor</h1>
+                    <p class="tagline">Structured JSON in seconds</p>
+                </div>
+            </div>
+            <div class="header-badge">
+                <span class="badge-dot"></span>
+                Ready
+            </div>
+        </header>
+
+        <!-- Upload Area -->
+        <section class="upload-section" id="upload-section">
+            <div class="upload-zone" id="upload-zone">
+                <div class="upload-icon">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <path d="M24 32V16M24 16L18 22M24 16L30 22" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 32C8 37.523 12.477 42 18 42H30C35.523 42 40 37.523 40 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                        <path d="M14 24C9.582 24 6 20.418 6 16C6 11.582 9.582 8 14 8C14.34 8 14.676 8.018 15.006 8.054C16.526 4.52 20.028 2 24 2C27.972 2 31.474 4.52 32.994 8.054C33.324 8.018 33.66 8 34 8C38.418 8 42 11.582 42 16C42 20.418 38.418 24 34 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <h2>Drop your PDF or Image here</h2>
+                <p>or click to browse files</p>
+                <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple hidden>
+                <button class="upload-btn" id="upload-btn">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                        <path d="M9 3V15M3 9H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Select Files
+                </button>
+            </div>
+        </section>
+
+        <!-- Results Area -->
+        <section class="results-section" id="results-section">
+            <div class="results-header">
+                <h2>Extraction Results</h2>
+                <button class="clear-btn" id="clear-btn" title="Clear all results">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Clear All
+                </button>
+            </div>
+            <div class="results-list" id="results-list">
+                <!-- Results cards rendered here by JS -->
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer">
+        <p>Built for IBIS Labs · PDF to Structured Data Pipeline</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
