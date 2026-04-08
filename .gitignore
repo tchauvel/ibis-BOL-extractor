@@ -1,26 +1,46 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
+dist/
+*.egg-info/
+.eggs/
 *.egg
 
 # Virtual environments
-venv/
 .venv/
+venv/
 env/
+ENV/
 
-# IDE
-.vscode/
+# ── Secrets (NEVER commit) ────────────────────────────────────────────────────
+.env
+*.env
+.env.*
+!.env.example
+
+# ── Test / coverage artefacts ─────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.lcov
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
 .idea/
+.vscode/
 *.swp
 *.swo
-.DS_Store
 
-# Output
+# ── Vercel ────────────────────────────────────────────────────────────────────
+.vercel/
+
+# ── Output artefacts ──────────────────────────────────────────────────────────
 output/*.json
-
-# Environment
-.env
+*.log
+logs/

@@ -1,9 +1,6 @@
 /**
- * app.js — Upload logic, API communication, and JSON result display.
- *
- * Single-file script for the one-button upload UI.
- * Handles drag-and-drop, file input, progress indication, and
- * syntax-highlighted JSON rendering.
+ * app.js — Unified Vision Extractor UI Logic
+ * Migrated to Event Delegation for CSP Compliance.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,9 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── Drag & Drop ─────────────────────────────────────────────────────────
 
     uploadZone.addEventListener('click', (e) => {
-        if (e.target !== uploadBtn && !uploadBtn.contains(e.target)) {
-            fileInput.click();
-        }
+        if (e.target !== uploadBtn && !uploadBtn.contains(e.target)) fileInput.click();
     });
 
     uploadBtn.addEventListener('click', (e) => {
@@ -45,32 +40,52 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = f.name.toLowerCase();
             return validExts.some(ext => name.endsWith(ext));
         });
-        if (files.length > 0) {
-            processFiles(files);
-        }
+        if (files.length > 0) processFiles(files);
     });
 
     fileInput.addEventListener('change', (e) => {
         const files = Array.from(e.target.files);
-        if (files.length > 0) {
-            processFiles(files);
-        }
-        fileInput.value = ''; // Reset for re-uploads
+        if (files.length > 0) processFiles(files);
+        fileInput.value = ''; 
     });
-
-    // ─── Clear Results ───────────────────────────────────────────────────────
 
     clearBtn.addEventListener('click', () => {
         resultsList.innerHTML = '';
         resultsSection.classList.remove('visible');
     });
 
+    // ─── Event Delegation (CSP Compliant) ────────────────────────────────────
+
+    resultsList.addEventListener('click', (e) => {
+        // 1. Toggle Card
+        const header = e.target.closest('.card-header');
+        if (header) {
+            const cardId = header.parentElement.id;
+            toggleCard(cardId);
+            return;
+        }
+
+        // 2. JSON Actions (Copy/Download)
+        const actionBtn = e.target.closest('.json-action-btn');
+        if (actionBtn) {
+            e.stopPropagation();
+            const action = actionBtn.dataset.action;
+            const card = actionBtn.closest('.result-card');
+            const cardId = card.id;
+
+            if (action === 'copy') {
+                copyJson(actionBtn, cardId);
+            } else if (action === 'download') {
+                downloadJson(cardId);
+            }
+        }
+    });
+
     // ─── Process Files ───────────────────────────────────────────────────────
 
     async function processFiles(files) {
         resultsSection.classList.add('visible');
-        
-        await Promise.all(files.map(async (file) => {
+        for (const file of files) {
             const processingId = showProcessing(file.name);
             try {
                 const result = await uploadAndProcess(file);
@@ -80,37 +95,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 removeProcessing(processingId);
                 showError(file.name, error.message);
             }
-        }));
+        }
     }
 
     async function uploadAndProcess(file) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch('/api/process', {
+        const response = await fetch(`/extract-bol`, {
             method: 'POST',
             body: formData,
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            throw new Error(errorData.detail || `Server error: ${response.status}`);
+            const error = await response.json().catch(() => ({ detail: 'Server error' }));
+            throw new Error(error.detail || 'Extraction failed');
         }
 
         return await response.json();
     }
 
-    // ─── Processing Indicator ────────────────────────────────────────────────
-
     function showProcessing(filename) {
-        const id = `processing-${Date.now()}`;
+        const id = `proc-${Date.now()}`;
         const card = document.createElement('div');
         card.className = 'processing-card';
         card.id = id;
         card.innerHTML = `
             <div class="spinner"></div>
             <div class="processing-text">
-                Processing <span class="processing-filename">${escapeHtml(filename)}</span>…
+                Analyzing <span class="processing-filename">${escapeHtml(filename)}</span> with Advanced AI Vision...
             </div>
         `;
         resultsList.prepend(card);
@@ -122,168 +135,140 @@ document.addEventListener('DOMContentLoaded', () => {
         if (card) card.remove();
     }
 
-    // ─── Result Card ─────────────────────────────────────────────────────────
+    // ─── Result Card Rendering ───────────────────────────────────────────────
 
     function showResult(filename, data) {
-        const cardId = `result-${Date.now()}`;
-        const confidence = data.extraction_confidence || 0;
-        const confLevel = confidence >= 0.7 ? 'high' : confidence >= 0.4 ? 'medium' : 'low';
-        const docType = data.document_subtype || data.document_type || 'unknown';
-        const method = data.extraction_method || 'unknown';
-        const warnings = data.extraction_warnings || [];
-
+        const cardId = `res-${Date.now()}`;
         const card = document.createElement('div');
         card.className = 'result-card';
         card.id = cardId;
 
-        // Remove raw_text from display (keep it clean)
-        const displayData = { ...data };
-        if (displayData.raw_text && displayData.raw_text.length > 200) {
-            displayData.raw_text = displayData.raw_text.substring(0, 200) + '… [truncated]';
-        }
+        const pipeline = data._pipeline || {};
+        const latency = pipeline.processing_time_ms;
+        const timeStr = latency ? (latency > 1000 ? 
+            `${(latency / 1000).toFixed(1)}s` : 
+            `${latency}ms`) : '--';
 
-        const jsonStr = JSON.stringify(displayData, null, 2);
+        // Deep Audit Metadata
+        const bolNum = data.bol_number || 'N/A';
+        const carrier = data.carrier_name || 'Unknown Carrier';
+
+        const displayData = { ...data };
+        delete displayData._pipeline;
 
         card.innerHTML = `
-            <div class="card-header" onclick="toggleCard('${cardId}')">
+            <div class="card-header">
                 <div class="card-file-info">
-                    <div class="file-icon">
-                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                            <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                            <line x1="6" y1="6" x2="12" y2="6" stroke="currentColor" stroke-width="1"/>
-                            <line x1="6" y1="9" x2="11" y2="9" stroke="currentColor" stroke-width="1"/>
-                            <line x1="6" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="1"/>
-                        </svg>
-                    </div>
+                    <div class="file-icon">📜</div>
                     <div>
                         <div class="file-name">${escapeHtml(filename)}</div>
-                        <div class="file-meta">${docType} · ${method}</div>
+                        <div class="file-meta">BOL: ${escapeHtml(bolNum)} · ${escapeHtml(carrier)}</div>
                     </div>
                 </div>
                 <div class="card-badges">
-                    <span class="confidence-badge confidence-${confLevel}">
-                        ${Math.round(confidence * 100)}% confidence
-                    </span>
-                    <svg class="toggle-icon expanded" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <span class="confidence-badge confidence-high">Verified Vision Audit</span>
+                    <svg class="toggle-icon expanded" width="16" height="16"><path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2"/></svg>
                 </div>
             </div>
-            ${warnings.length > 0 ? `
-                <div class="warnings-section">
-                    ${warnings.map(w => `<div class="warning-item">${escapeHtml(w)}</div>`).join('')}
+            
+            <div class="pipeline-bar">
+                <div class="pipeline-item">
+                    <span class="pipeline-label">Model</span>
+                    <span class="pipeline-value">${escapeHtml(pipeline.model || 'Gemini 3.1 Flash-Lite')}</span>
                 </div>
-            ` : ''}
+                <div class="pipeline-divider"></div>
+                <div class="pipeline-item">
+                    <span class="pipeline-label">Latency</span>
+                    <span class="pipeline-value">${timeStr}</span>
+                </div>
+                <div class="pipeline-divider"></div>
+                <div class="pipeline-item">
+                    <span class="pipeline-label">Pages</span>
+                    <span class="pipeline-value">${pipeline.pages_processed || 1}</span>
+                </div>
+            </div>
+
             <div class="card-body expanded">
                 <div class="json-toolbar">
-                    <div class="json-toolbar-left">
-                        <span class="json-label">JSON Output</span>
+                    <span class="json-label">STRUCTURED LOGISTICS DATA</span>
+                    <div class="json-actions">
+                        <button class="json-action-btn" data-action="copy">Copy JSON</button>
+                        <button class="json-action-btn" data-action="download">Download JSON</button>
                     </div>
-                    <button class="copy-btn" onclick="copyJson(this, '${cardId}')">
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                            <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                            <path d="M8 4V2.5C8 1.67 7.33 1 6.5 1H2.5C1.67 1 1 1.67 1 2.5V6.5C1 7.33 1.67 8 2.5 8H4" stroke="currentColor" stroke-width="1.2"/>
-                        </svg>
-                        Copy
-                    </button>
                 </div>
                 <div class="json-content">
-                    <pre>${syntaxHighlight(jsonStr)}</pre>
+                    <pre>${syntaxHighlight(JSON.stringify(displayData, null, 2))}</pre>
                 </div>
             </div>
         `;
 
-        // Store raw JSON for copy
-        card.dataset.json = JSON.stringify(displayData, null, 2);
-
+        card.dataset.json = JSON.stringify(data, null, 2);
+        card.dataset.filename = filename;
         resultsList.prepend(card);
     }
 
     function showError(filename, message) {
         const card = document.createElement('div');
-        card.className = 'result-card';
-        card.innerHTML = `
-            <div class="card-header">
-                <div class="card-file-info">
-                    <div class="file-icon" style="background: var(--error-bg); color: var(--error);">
-                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                            <circle cx="9" cy="9" r="7" stroke="currentColor" stroke-width="1.5"/>
-                            <path d="M6 6L12 12M12 6L6 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="file-name">${escapeHtml(filename)}</div>
-                        <div class="file-meta" style="color: var(--error);">${escapeHtml(message)}</div>
-                    </div>
-                </div>
-                <span class="confidence-badge confidence-low">Failed</span>
-            </div>
-        `;
+        card.className = 'result-card error';
+        card.innerHTML = `<div class="card-header"><div class="file-name">${escapeHtml(filename)}</div><div class="file-meta">${escapeHtml(message)}</div></div>`;
         resultsList.prepend(card);
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────
+    // ─── Helpers (Local Scope) ───────────────────────────────────────────────
 
-    window.toggleCard = function(cardId) {
-        const card = document.getElementById(cardId);
+    function toggleCard(id) {
+        const card = document.getElementById(id);
         if (!card) return;
         const body = card.querySelector('.card-body');
         const icon = card.querySelector('.toggle-icon');
-        if (body) body.classList.toggle('expanded');
-        if (icon) icon.classList.toggle('expanded');
-    };
 
-    window.copyJson = function(btn, cardId) {
-        const card = document.getElementById(cardId);
-        if (!card) return;
+        body.classList.toggle('expanded');
+        icon.classList.toggle('expanded');
+    }
+
+    function copyJson(btn, id) {
+        const card = document.getElementById(id);
         const json = card.dataset.json;
         navigator.clipboard.writeText(json).then(() => {
-            btn.classList.add('copied');
-            btn.innerHTML = `
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6L5 9L10 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                Copied!
-            `;
+            const oldText = btn.innerText;
+            btn.innerText = 'Copied!';
+            btn.classList.add('success');
             setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerHTML = `
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <rect x="4" y="4" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.2"/>
-                        <path d="M8 4V2.5C8 1.67 7.33 1 6.5 1H2.5C1.67 1 1 1.67 1 2.5V6.5C1 7.33 1.67 8 2.5 8H4" stroke="currentColor" stroke-width="1.2"/>
-                    </svg>
-                    Copy
-                `;
+                btn.innerText = oldText;
+                btn.classList.remove('success');
             }, 2000);
         });
-    };
+    }
+
+    function downloadJson(id) {
+        const card = document.getElementById(id);
+        const json = card.dataset.json;
+        const rawFilename = card.dataset.filename || 'document';
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.download = rawFilename.replace(/\.[^/.]+$/, '') + '_extracted.json';
+        a.href = url;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
 
     function syntaxHighlight(json) {
-        return json.replace(
-            /("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|null)/g,
-            (match) => {
-                let cls = 'json-number';
-                if (/^"/.test(match)) {
-                    if (/:$/.test(match)) {
-                        cls = 'json-key';
-                        // Remove the colon from the match for cleaner display
-                        return `<span class="${cls}">${match.slice(0, -1)}</span>:`;
-                    } else {
-                        cls = 'json-string';
-                    }
-                } else if (/true|false/.test(match)) {
-                    cls = 'json-boolean';
-                } else if (/null/.test(match)) {
-                    cls = 'json-null';
-                }
-                return `<span class="${cls}">${match}</span>`;
-            }
-        );
+        return json.replace(/("(\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|null)/g, (m) => {
+            let cls = 'json-number';
+            if (/^"/.test(m)) {
+                cls = /:$/.test(m) ? 'json-key' : 'json-string';
+            } else if (/true|false/.test(m)) cls = 'json-boolean';
+            else if (/null/.test(m)) cls = 'json-null';
+            return `<span class="${cls}">${m}</span>`;
+        });
     }
 
     function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
     }
 });

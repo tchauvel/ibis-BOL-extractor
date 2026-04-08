@@ -1,286 +1,123 @@
 """
-schema.py — Pydantic models for the unified BOL document schema.
-
-Design rationale:
-- All fields are Optional to handle partial extraction gracefully
-- Confidence scoring is baked into the output so consumers know what to trust
-- The schema is broad enough to cover domestic LTL, ocean container, and unknown doc types
-- `raw_text` is always included for debugging and downstream processing
-
-Classification covers three dimensions (per DOT/FMCSA requirements):
-  1. Functional Type: Straight, Order/Negotiable, Master, Through, Ocean
-  2. Regulatory Type: General Commodity, Hazmat, Household Goods
-  3. Transport Mode: LTL, Truckload (TL)
+schema.py — Unified BOL Data Model
+Strict Pydantic v2 models for logistics extraction.
+Includes validation for weights and specific field naming for Gemini compatibility.
 """
-
 from __future__ import annotations
+from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
 
-from typing import Optional, List
-from pydantic import BaseModel, Field
-
-
-# ─── Sub-models ───────────────────────────────────────────────────────────────
 
 class Address(BaseModel):
-    """Structured address, parsed from free-text address blocks."""
-    name: Optional[str] = Field(None, description="Company or facility name")
-    address_line_1: Optional[str] = Field(None, description="Street address")
-    address_line_2: Optional[str] = Field(None, description="Suite, unit, etc.")
-    city: Optional[str] = None
-    state: Optional[str] = None
-    zip_code: Optional[str] = None
-    country: Optional[str] = Field(None, description="Country code or name")
+    address_line: str = Field(..., description="Street address (including lines 1 & 2)")
+    city: str
+    state: str
+    zip_code: str
     phone: Optional[str] = None
-    fax: Optional[str] = None
 
 
-class Party(BaseModel):
-    """A named party in the shipping transaction."""
-    role: str = Field(..., description="Role: shipper, consignee, third_party_billing, broker, etc.")
-    address: Optional[Address] = None
+class Entity(BaseModel):
+    name: str = Field(..., description="Full legal name of the entity")
+    address: Address
 
 
-class CarrierInfo(BaseModel):
-    """Carrier / transport provider details."""
-    name: Optional[str] = None
-    scac: Optional[str] = Field(None, description="Standard Carrier Alpha Code")
-    pro_number: Optional[str] = Field(None, description="Progressive/tracking number (LTL)")
-    trailer_number: Optional[str] = Field(None, description="Trailer ID (TL/FTL)")
+class DocumentReference(BaseModel):
+    reference_label: str = Field(..., description="e.g., 'Airway Bill', 'Shipper Reference', 'Control'")
+    reference_value: str
 
 
-class VesselInfo(BaseModel):
-    """Ocean vessel details — only present on ocean/container BOLs."""
-    vessel_name: Optional[str] = None
-    voyage_number: Optional[str] = None
-    port_of_loading: Optional[str] = Field(None, description="Port of Loading / Origin")
-    port_of_discharge: Optional[str] = Field(None, description="Port of Discharge / Destination")
-    port_of_origin: Optional[str] = None
-    port_of_destination: Optional[str] = None
-    eta: Optional[str] = None
-
-
-class ContainerInfo(BaseModel):
-    """Container details — only present on ocean/container BOLs."""
-    container_number: Optional[str] = None
-    container_size: Optional[str] = Field(None, description="e.g., 40HD, 20ST")
-    seal_number: Optional[str] = None
-
-
-class HazmatInfo(BaseModel):
-    """
-    Hazardous materials data per DOT 49 CFR 172.
-    Extracted from H.M. column markers and regulatory fields.
-    """
-    un_na_number: Optional[str] = Field(None, description="UN/NA ID e.g. UN3480, NA1993")
-    proper_shipping_name: Optional[str] = None
-    hazard_class: Optional[str] = Field(None, description="DOT hazard class e.g. 9, 3, 2.1")
-    packing_group: Optional[str] = Field(None, description="I, II, or III")
-    emergency_contact: Optional[str] = Field(None, description="24-hour emergency phone")
-    placard_required: Optional[bool] = None
+class LogisticsDates(BaseModel):
+    document_date: Optional[str] = Field(None, description="The generic date printed at the top of the form")
+    dispatch_or_ship_date: Optional[str] = Field(None, description="Look specifically for 'Dispatch Date' or 'Ship Date'")
+    delivery_date: Optional[str] = Field(None, description="Look for 'Delivery Date' or 'Est. Delivery'")
+    appointment_time: Optional[str] = Field(None, description="Look for 'Appointment Time' in yard management sections")
+    arrival_time: Optional[str] = Field(None, description="Look for 'Arrival Time'")
+    leaving_time: Optional[str] = Field(None, description="Look for 'Leaving Time'")
 
 
 class LineItem(BaseModel):
-    """Individual item in the shipment."""
-    description: Optional[str] = None
-    quantity: Optional[int] = None
-    packaging_type: Optional[str] = Field(None, description="e.g., PLT (pallet), CTN (carton)")
-    weight: Optional[float] = Field(None, description="Weight in lbs or kg")
-    weight_unit: Optional[str] = Field("lbs", description="lbs or kg")
-    dimensions: Optional[str] = Field(None, description="L x W x H")
-    volume_cbm: Optional[float] = Field(None, description="Volume in cubic meters")
-    nmfc: Optional[str] = Field(None, description="National Motor Freight Classification")
-    ltl_class: Optional[float] = Field(None, description="LTL freight class (50–500)")
-    hazmat: Optional[bool] = Field(False, description="True if H.M. column marked 'X'")
-    hazmat_info: Optional[HazmatInfo] = Field(None, description="Hazmat detail (only if hazmat=True)")
-    carton_count: Optional[int] = None
+    handling_unit_qty: int
+    handling_unit_type: str = Field(..., description="e.g., PLT, SKD")
+    package_qty: int
+    package_type: str = Field(..., description="e.g., Cartons, Boxes")
+    weight_lbs: float
+    item_description: str
+    article_or_item_number: Optional[str] = Field(None, description="Look for 'Article nr', 'Item code', 'Item#', or 'UPC Number'")
+    best_before_or_expiration_date: Optional[str] = Field(None, description="Look for 'Best before', 'BDD', or 'Expiration Date'")
+    frozen_date: Optional[str] = Field(None, description="Look specifically for 'Frozen date' on meat/seafood products")
+    batch_lot_number_or_supplier_ref: Optional[str] = Field(None, description="Look for 'BatchLot', 'Lot#', or 'Supplier ref.'")
+    nmfc_code: Optional[str] = None
+    freight_class: Optional[float] = None
+    is_hazardous: bool = False
+    un_number: Optional[str] = None
+
+    @field_validator("weight_lbs", "freight_class", mode="before")
+    @classmethod
+    def parse_item_numeric(cls, v):
+        if isinstance(v, str):
+            cleaned = "".join(c for c in v if c.isdigit() or c in ".-")
+            try:
+                return float(cleaned)
+            except (ValueError, TypeError):
+                return 0.0
+        return v
 
 
-class ShippingDetails(BaseModel):
-    """Dates, terms, and logistics metadata."""
-    pickup_date: Optional[str] = None
-    estimated_delivery: Optional[str] = None
-    freight_terms: Optional[str] = Field(None, description="e.g., Prepaid, Collect, 3rd Party")
-    origin_terminal: Optional[str] = None
-    destination_terminal: Optional[str] = None
-    special_instructions: Optional[str] = None
-    accessorials: Optional[str] = None
-
-
-class Totals(BaseModel):
-    """Shipment totals."""
-    total_pieces: Optional[int] = None
-    total_weight: Optional[float] = None
-    total_weight_unit: Optional[str] = Field("lbs", description="lbs or kg")
-    total_volume_cbm: Optional[float] = None
-    total_cartons: Optional[int] = None
-
-
-# ─── Document Classification ─────────────────────────────────────────────────
-
-class DocumentClassification(BaseModel):
+class UnifiedBOL(BaseModel):
     """
-    Three-dimensional BOL classification per DOT/FMCSA requirements.
-
-    Dimension 1 — Functional & Legal Type:
-        straight:  Non-negotiable, consigned to a specific party
-        order:     Negotiable, contains "to order" / endorsement language
-        master:    Consolidation — references multiple underlying BOLs
-        through:   Multi-carrier / intermodal under one issuer
-        ocean:     Maritime-specific (vessel, ports, containers)
-
-    Dimension 2 — Regulatory & Commodity Type:
-        general:   Standard freight (49 CFR 373.101)
-        hazmat:    Hazardous materials (49 CFR 172/173)
-        household: Consumer moving services (FMCSA 49 CFR 375.505)
-
-    Dimension 3 — Transport Mode:
-        ltl:       Less-Than-Truckload (PRO number, NMFC class)
-        tl:        Full Truckload (trailer number, sealed shipment)
-        ocean:     Ocean container / drayage
-        air:       Air freight
-        intermodal: Multi-mode
+    Unified Pydantic V2 model for logistics extraction.
+    Strictly follows the technical specification for field naming and types.
     """
-    functional_type: Optional[str] = Field(
-        "straight",
-        description="straight | order | master | through | ocean"
-    )
-    regulatory_type: Optional[str] = Field(
-        "general",
-        description="general | hazmat | household"
-    )
-    transport_mode: Optional[str] = Field(
-        None,
-        description="ltl | tl | ocean | air | intermodal"
-    )
+    # Document Metadata & Operational Numbers
+    bol_number: str
+    pro_number: Optional[str] = None
+    plan_number: Optional[str] = Field(None, description="Look for 'Plan#' or 'SF Plan#'")
+    order_number: Optional[str] = Field(None, description="Look for 'Order#', 'SF Order#', or 'Cavendish Order No.'")
+    web_id: Optional[str] = Field(None, description="Look for 'Web ID#'")
+    customer_reference: Optional[str] = Field(None, description="Look specifically for 'CUSTOMER REF' or 'Customer PO. No.'")
+    master_bol_indicator: bool = False
+    
+    # Dates & Times
+    logistics_dates: Optional[LogisticsDates] = None
 
-    # Explain *why* the system classified this way
-    functional_type_signals: list[str] = Field(
-        default_factory=list,
-        description="Signals that triggered functional type classification"
-    )
-    regulatory_type_signals: list[str] = Field(
-        default_factory=list,
-        description="Signals that triggered regulatory type classification"
-    )
-    transport_mode_signals: list[str] = Field(
-        default_factory=list,
-        description="Signals that triggered transport mode classification"
-    )
+    # Entities
+    shipper: Entity
+    consignee: Entity
+    third_party_bill_to: Optional[Entity] = None
 
-    is_hazmat: bool = Field(False, description="Quick flag: any hazmat items?")
-    is_master_bol: bool = Field(False, description="Quick flag: consolidation BOL?")
-    is_negotiable: bool = Field(False, description="Quick flag: negotiable/order BOL?")
+    # Carrier & Routing
+    carrier_name: str
+    scac_code: Optional[str] = None
 
+    # Ocean/Container Details
+    vessel_name: Optional[str] = None
+    voyage_number: Optional[str] = None
+    container_number: Optional[str] = None
+    seal_number: Optional[str] = None
 
-# ─── Root Document Model ─────────────────────────────────────────────────────
+    # Cold Chain Details
+    temperature_setpoint_fahrenheit: Optional[float] = None
+    temperature_recorder_number: Optional[str] = None
 
-class BOLDocument(BaseModel):
-    """
-    Unified Bill of Lading schema — covers domestic LTL, ocean container,
-    truckload, hazmat, and generic shipping documents.
+    # Inventory Line Items
+    line_items: List[LineItem] = Field(default_factory=list)
 
-    Designed for graceful degradation: every field is optional except
-    `document_type` and `extraction_method`.
-    """
-    # Document metadata
-    document_type: str = Field("bill_of_lading", description="Detected document type")
-    document_subtype: Optional[str] = Field(None, description="e.g., ltl, ocean, drayage")
-    document_date: Optional[str] = None
+    # Proprietary References
+    other_references: List[DocumentReference] = Field(default_factory=list)
 
-    # ── NEW: Three-dimensional classification ──
-    classification: Optional[DocumentClassification] = Field(
-        None,
-        description="Functional type, regulatory type, and transport mode"
-    )
+    # Totals & Compliance
+    grand_total_weight_lbs: float
+    grand_total_handling_units: int
+    shipper_signature_present: bool = False
+    carrier_signature_present: bool = False
 
-    # Key identifiers — varies by document type
-    references: Optional[dict[str, Optional[str]]] = Field(
-        default_factory=dict,
-        description="All reference numbers: bol_number, pro_number, po_number, etc."
-    )
-
-    # Parties
-    parties: list[Party] = Field(default_factory=list)
-
-    # Carrier
-    carrier: Optional[CarrierInfo] = None
-
-    # Shipping logistics
-    shipping_details: Optional[ShippingDetails] = None
-
-    # Items
-    line_items: list[LineItem] = Field(default_factory=list)
-
-    # Totals
-    totals: Optional[Totals] = None
-
-    # Ocean-specific (optional)
-    vessel_info: Optional[VesselInfo] = None
-    container_info: Optional[ContainerInfo] = None
-
-    # Extraction metadata
-    raw_text: Optional[str] = Field(None, description="Full extracted text for debugging")
-    extraction_method: str = Field("unknown", description="pdfplumber, vision_llm, hybrid, verified")
-    extraction_confidence: float = Field(0.0, description="0.0 to 1.0 confidence score")
-    extraction_warnings: list[str] = Field(default_factory=list)
-
-    # Verification metadata
-    is_verified: bool = Field(False, description="True if LLM verification confirmed the primary extraction")
-    verification_method: Optional[str] = Field(None, description="The LLM backend that performed verification (e.g. gemini, openai)")
-    verification_discrepancies: list[str] = Field(default_factory=list, description="Fields where Primary and LLM disagreed")
-
-    def to_json(self) -> str:
-        """Serialize to pretty-printed JSON string."""
-        return self.model_dump_json(indent=2, exclude_none=True)
-
-    def compute_confidence(self) -> float:
-        """
-        Compute extraction confidence based on how many key fields were extracted.
-        Weights: references and parties are most important.
-        """
-        score = 0.0
-        max_score = 0.0
-
-        # References (high weight)
-        max_score += 3.0
-        ref_count = len(self.references)
-        score += min(ref_count, 3) * 1.0
-
-        # Parties (high weight)
-        max_score += 2.0
-        party_count = len([p for p in self.parties if p.address and p.address.name])
-        score += min(party_count, 2) * 1.0
-
-        # Carrier
-        max_score += 1.0
-        if self.carrier and self.carrier.name:
-            score += 1.0
-
-        # Line items
-        max_score += 1.0
-        if self.line_items:
-            score += 1.0
-
-        # Shipping details
-        max_score += 1.0
-        if self.shipping_details and (self.shipping_details.pickup_date or self.shipping_details.freight_terms):
-            score += 1.0
-
-        # Document date
-        max_score += 1.0
-        if self.document_date:
-            score += 1.0
-
-        # Totals
-        max_score += 1.0
-        if self.totals and (self.totals.total_weight or self.totals.total_pieces):
-            score += 1.0
-
-        # Classification (bonus)
-        max_score += 1.0
-        if self.classification and self.classification.functional_type:
-            score += 1.0
-
-        confidence = score / max_score if max_score > 0 else 0.0
-        self.extraction_confidence = round(confidence, 2)
-        return self.extraction_confidence
+    @field_validator("temperature_setpoint_fahrenheit", "grand_total_weight_lbs", mode="before")
+    @classmethod
+    def parse_numeric(cls, v):
+        if isinstance(v, str):
+            cleaned = "".join(c for c in v if c.isdigit() or c in ".-")
+            try:
+                return float(cleaned)
+            except (ValueError, TypeError):
+                return 0.0
+        return v
