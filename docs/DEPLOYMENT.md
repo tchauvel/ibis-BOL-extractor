@@ -1,26 +1,25 @@
 # Deployment Guide: Ibis BOL Extractor
 
-This guide covers deploying the Ibis platform to production environments in the 2026 stack.
+This guide covers deploying the Ibis platform to production and agentic environments in the 2026 stack.
 
 ## 1. Vercel Deployment (Serverless)
 
-The repository is configured for Vercel out of the box using the `api/index.py` proxy.
+The repository is configured for Vercel out-of-the-box using the consolidated structure.
 
 ### Steps:
 1. Connect your GitHub repository to Vercel.
 2. Add the following **Environment Variables**:
    - `GEMINI_API_KEY`: Your Google AI Studio API Key.
-3. Deploy. Vercel will automatically detect the `vercel.json` and serve the FastAPI backend.
+3. Deploy. Vercel will automatically detect the `vercel.json` and serve the FastAPI backend through the `/api/index.py` handler.
+
+> [!IMPORTANT]
+> **Timeout Configuration**: Our `vercel.json` is set to `maxDuration: 60`. If you encounter timeouts on a free account, try processing smaller documents or upgrading to Pro.
 
 ## 2. Docker / Cloud Deployment (Persistent)
 
 For high-volume persistent workloads, a standard FastAPI container is recommended.
 
-### Prerequisites:
-- Python 3.10+
-- `poppler-utils` (Required for `pdf2image`)
-
-### Manual Start:
+### Local Setup:
 ```bash
 # Set API Key
 export GEMINI_API_KEY="your_key_here"
@@ -29,7 +28,7 @@ export GEMINI_API_KEY="your_key_here"
 pip install -r requirements.txt
 
 # Start Server
-python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8000
 ```
 
 ## 3. Agentic Deployment (MCP)
@@ -53,8 +52,8 @@ To use the Ibis extractor as a native tool in **Claude Desktop** or **Cursor**, 
   }
 }
 ```
-3. Restart Claude Desktop. You will now see the `Ibis Logistics Extractor` in the tool icon.
+3. Restart Claude Desktop. The `ibis-extractor` tools will now be available for document analysis.
 
 ## 4. Production Considerations
-- **Memory**: Ensure the instance has at least 1GB of RAM for high-DPI PDF rasterization.
-- **Timeout**: Set the gateway timeout to at least 60s, as Vision-LLM extraction can take 5-15s per multi-page document.
+- **Memory**: Minimum 1GB RAM recommended for PDF rasterization.
+- **Security**: The UI uses a strict Content Security Policy (CSP). If adding external scripts, update the middleware in `api/index.py`.

@@ -23,7 +23,7 @@ The response is a strict JSON object containing the following keys (if found):
     - `handling_unit_qty`
     - `item_description`
     - `weight_lbs`
-    - ... (see `schema_unified.py` for full details)
+    - ... (see `api/lib/schema.py` for full details)
 
 #### Metadata (`_pipeline`)
 Each response contains a `_pipeline` object for telemetry:
