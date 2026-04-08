@@ -1,4 +1,4 @@
-# IBIS BOL Extractor (v2.0 Vision AI)
+# IBIS BOL Extractor 
 
 A production-grade logistics extraction platform that converts unstructured Bills of Lading (BOLs) and Delivery Notes into strict, validated JSON data.
 
