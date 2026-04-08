@@ -14,7 +14,7 @@ Direct LLM analysis of raw PDFs often leads to token bloat or failure. Our pipel
 Modern Vision-LLMs (Gemini 3.1) in **Structured Output** mode require a "Pure JSON Schema".
 - **Schema Resolution**: We implement the `resolve_schema_refs` utility to recursively traverse Pydantic schemas, resolving references ($refs) and stripping metadata ($defs) that Gemini otherwise rejects.
 - **REST Implementation**: We bypass standard SDKs for `httpx` direct REST calls. This ensures full payload control and eliminates SDK-level model resolution errors.
-
+- **Persona-Driven Audit**: Injects a high-seniority "Compliance Auditor" persona with logic specialized for enterprise-tier logistics and retail documentation.
 
 ## Phase 3: Validation & Integrity (`api/lib/schema.py`)
 Final data integrity is enforced via Pydantic v2.
@@ -24,5 +24,5 @@ Final data integrity is enforced via Pydantic v2.
 ---
 
 ## Entry Points
-1. **Serverless Handler (`api/index.py`)**: Unified FastAPI endpoint optimized for Vercel Serverless Functions.
+1. **Serverless Handler (`api/extract.py`)**: Unified FastAPI endpoint optimized for Vercel Serverless Functions.
 2. **MCP Server (`mcp_server.py`)**: Agentic integration for Claude Desktop and Cursor, enabling local document audits directly via natural language.

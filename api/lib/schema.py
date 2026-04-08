@@ -71,8 +71,8 @@ class UnifiedBOL(BaseModel):
     # Document Metadata & Operational Numbers
     bol_number: str
     pro_number: Optional[str] = None
-    plan_number: Optional[str] = Field(None, description="Look for 'Plan#' or 'SF Plan#'")
-    order_number: Optional[str] = Field(None, description="Look for 'Order#', 'SF Order#', or 'Cavendish Order No.'")
+    plan_number: Optional[str] = Field(None, description="Look for 'Plan#' or proprietary plan identifiers")
+    order_number: Optional[str] = Field(None, description="Look for 'Order#', proprietary order patterns, or supplier-specific references")
     web_id: Optional[str] = Field(None, description="Look for 'Web ID#'")
     customer_reference: Optional[str] = Field(None, description="Look specifically for 'CUSTOMER REF' or 'Customer PO. No.'")
     master_bol_indicator: bool = False
