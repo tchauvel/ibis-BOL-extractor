@@ -8,12 +8,12 @@ The repository is configured for Vercel out-of-the-box using the consolidated st
 
 ### Steps:
 1. Connect your GitHub repository to Vercel.
-2. Add the following **Environment Variables**:
-   - `GEMINI_API_KEY`: Your Google AI Studio API Key.
-3. Deploy. Vercel will automatically detect the `vercel.json` and serve the FastAPI backend through the `/api/index.py` handler.
+2. Add the following Environment Variables:
+   - GEMINI_API_KEY: Your Google AI Studio API Key.
+3. Deploy. Vercel will automatically detect the vercel.json and serve the FastAPI backend through the /api/extract.py handler.
 
 > [!IMPORTANT]
-> **Timeout Configuration**: Our `vercel.json` is set to `maxDuration: 60`. If you encounter timeouts on a free account, try processing smaller documents or upgrading to Pro.
+> **Timeout Configuration**: Our vercel.json is set to maxDuration: 60. If you encounter timeouts on a free account, try processing smaller documents or upgrading to Pro.
 
 ## 2. Docker / Cloud Deployment (Persistent)
 
@@ -28,32 +28,19 @@ export GEMINI_API_KEY="your_key_here"
 pip install -r requirements.txt
 
 # Start Server
-python3 -m uvicorn api.index:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn api.extract:app --host 0.0.0.0 --port 8000
 ```
 
 ## 3. Agentic Deployment (MCP)
 
-To use the Ibis extractor as a native tool in **Claude Desktop** or **Cursor**, register it as an MCP server.
+To use the Ibis extractor as a native tool in Claude Desktop or Cursor, register it as an MCP server.
 
 ### Steps for Claude Desktop:
 1. Open your Claude Desktop config file:
-   `~/Library/Application\ Support/Claude/claude_desktop_config.json`
-2. Add the Ibis server to the `mcpServers` block:
-```json
-{
-  "mcpServers": {
-    "ibis-extractor": {
-      "command": "python3",
-      "args": ["/absolute/path/to/ibis-pdf-extractor/mcp_server.py"],
-      "env": {
-        "GEMINI_API_KEY": "your_api_key_here"
-      }
-    }
-  }
-}
-```
-3. Restart Claude Desktop. The `ibis-extractor` tools will now be available for document analysis.
+   ~/Library/Application Support/Claude/claude_desktop_config.json
+2. Add the Ibis server to the mcpServers block.
+3. Restart Claude Desktop. The ibis-extractor tools will now be available for document analysis.
 
 ## 4. Production Considerations
 - **Memory**: Minimum 1GB RAM recommended for PDF rasterization.
-- **Security**: The UI uses a strict Content Security Policy (CSP). If adding external scripts, update the middleware in `api/index.py`.
+- **Security**: The UI uses a strict Content Security Policy (CSP). If adding external scripts, update the middleware in /api/extract.py.
