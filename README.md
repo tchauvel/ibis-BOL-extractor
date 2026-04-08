@@ -2,8 +2,6 @@
 
 A production-grade logistics extraction platform that converts unstructured, highly variable Bills of Lading (BOLs), Delivery Notes, and Master BOLs into strict, validated JSON data using Gemini 3.1 Vision AI.
 
-By abandoning brittle, template-based OCR and leveraging multimodal AI, this system cuts document processing time to under 60 seconds while drastically reducing FMCSA compliance errors.
-
 ## Engineering and Business Judgment
 
 This project was built with the philosophy that data extraction must serve regulatory compliance and supply chain workflows, not just transcribe text.
