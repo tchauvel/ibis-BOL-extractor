@@ -1,21 +1,25 @@
 {
-  "functions": {
-    "api/extract.py": {
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "api/extract.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxDuration": 60
+      }
     }
-  },
-  "rewrites": [
+  ],
+  "routes": [
     {
-      "source": "/static/(.*)",
-      "destination": "/static/$1"
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
     },
     {
-      "source": "/api/(.*)",
-      "destination": "/api/extract.py"
+      "src": "/api/(.*)",
+      "dest": "api/extract.py"
     },
     {
-      "source": "/((?!api/|static/).*)",
-      "destination": "/api/extract.py"
+      "src": "/(.*)",
+      "dest": "api/extract.py"
     }
   ]
 }
