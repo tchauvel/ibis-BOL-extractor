@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/index.py": {
+    "api/extract.py": {
       "maxDuration": 60
     }
   },
@@ -11,11 +11,11 @@
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "/api/extract.py"
     },
     {
       "source": "/((?!api/|static/).*)",
-      "destination": "/api/index.py"
+      "destination": "/api/extract.py"
     }
   ]
 }
