@@ -18,6 +18,10 @@ class ExtractionResult:
     has_text: bool = False
     method: str = "unknown"
     warnings: list[str] = field(default_factory=list)
+    # Zone-aware fields: word bounding boxes per page [(text, x0, top, x1, bottom), ...]
+    word_positions: list[list[dict]] = field(default_factory=list)
+    # Page dimensions per page [(width, height), ...]
+    page_dimensions: list[tuple[float, float]] = field(default_factory=list)
 
 
 class BaseExtractor(ABC):

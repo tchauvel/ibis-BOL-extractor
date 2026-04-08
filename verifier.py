@@ -118,10 +118,44 @@ def verify_documents(primary: BOLDocument, verification: BOLDocument) -> BOLDocu
             else:
                 discrepancies.append(f"totals.total_pieces: primary='{p_pcs}', llm='{v_pcs}'")
 
+    # 5. Cross-reference Line Items (Python Security Layer)
+    # If Python extracted N line items and LLM extracted a different count, flag it
+    p_item_count = len(primary.line_items or [])
+    v_item_count = len(verification.line_items or [])
+    if p_item_count > 0 and v_item_count > 0:
+        total_comparisons += 1
+        if p_item_count == v_item_count:
+            match_count += 1
+        else:
+            discrepancies.append(
+                f"line_item_count: python={p_item_count}, llm={v_item_count}"
+            )
+
+    # 6. Hallucination Detection (Python Security Layer)
+    # If Python found a clean identifier and LLM disagrees, trust Python
+    hallucination_flags = []
+    CORE_IDENTIFIERS = ['bol_number', 'pro_number', 'container_number', 'seal_number']
+    for key in CORE_IDENTIFIERS:
+        p_val = p_refs.get(key)
+        v_val = v_refs.get(key)
+        if p_val and v_val and not _compare(p_val, v_val):
+            if not _is_suspicious_extraction(p_val):
+                # Python's deterministic extraction is clean — LLM may be hallucinating
+                hallucination_flags.append(
+                    f"HALLUCINATION WARNING: LLM '{v_val}' for {key} "
+                    f"contradicts deterministic Python extraction '{p_val}'. "
+                    f"Keeping Python value."
+                )
+                logger.warning(f"Hallucination detected for {key}: LLM='{v_val}' vs Python='{p_val}'")
+
     # Attach verification results to the primary document
     primary.verification_discrepancies = discrepancies
     primary.verification_method = verification.verification_method
     
+    # Add hallucination warnings
+    for flag in hallucination_flags:
+        primary.extraction_warnings.append(flag)
+
     # Calculate agreement ratio (ignoring fields where one model found None)
     if total_comparisons > 0:
         agreement_ratio = match_count / total_comparisons
@@ -129,7 +163,12 @@ def verify_documents(primary: BOLDocument, verification: BOLDocument) -> BOLDocu
         
         primary.extraction_method = f"pdfplumber + {verification.verification_method}"
         
-        if agreement_ratio > 0.8 and not discrepancies:
+        if agreement_ratio >= 1.0 and not discrepancies and not hallucination_flags:
+            # Perfect agreement: maximum confidence boost
+            primary.is_verified = True
+            primary.extraction_confidence = min(1.0, primary.extraction_confidence + 0.25)
+            logger.info("FULL AGREEMENT: Perfect match between Python and LLM. Max confidence boost applied.")
+        elif agreement_ratio > 0.8 and not discrepancies:
             primary.is_verified = True
             primary.extraction_confidence = min(1.0, primary.extraction_confidence + 0.2)
         else:

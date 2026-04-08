@@ -6,14 +6,20 @@ Targets documents like TCLU7950467.pdf:
 - Form layout with labeled fields
 - Inventory table: Container, BOL, PO, Weight, CBM, Cartons
 - Vessel/voyage info, SCAC codes, seal numbers
+
+Enhanced with:
+- Zone-based coordinate extraction for layout-aware address parsing
+- Mathematical verification (line item weights vs. total weight)
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
 
 from extractors.base import ExtractionResult
+from extractors.pdfplumber_extractor import PdfPlumberExtractor
 from parsers.base import BaseBOLParser
 from schema import (
     BOLDocument, Party, Address, CarrierInfo,
@@ -27,6 +33,8 @@ from utils import (
     safe_int,
     safe_float,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class OceanBOLParser(BaseBOLParser):
@@ -112,8 +120,10 @@ class OceanBOLParser(BaseBOLParser):
         if din_num:
             doc.references['din_number'] = din_num
 
-        # ── Parties ──
-        doc.parties = self._extract_parties(text)
+        # ── Parties (Zone-Based + Regex Fallback) ──
+        doc.parties = self._extract_parties_zone(extraction)
+        if len(doc.parties) < 2:
+            doc.parties = self._extract_parties(text)
 
         # ── Line Items (from tables) ──
         doc.line_items = self._extract_line_items(extraction)
@@ -121,10 +131,74 @@ class OceanBOLParser(BaseBOLParser):
         # ── Totals ──
         doc.totals = self._extract_totals(text, extraction)
 
+        # ── Mathematical Verification ──
+        self._verify_weight_totals(doc)
+
         # ── Confidence ──
         doc.compute_confidence()
 
         return doc
+
+    # ── Zone-Based Party Extraction ──
+
+    def _extract_parties_zone(self, extraction: ExtractionResult) -> list[Party]:
+        """
+        Use coordinate-aware zone extraction for ocean BOLs.
+        Layout: Ship From = left side top, Ship To = right side top (or below).
+        """
+        parties = []
+        if not extraction.word_positions or not extraction.page_dimensions:
+            return parties
+
+        words = extraction.word_positions[0] if extraction.word_positions else []
+        dims = extraction.page_dimensions[0] if extraction.page_dimensions else None
+        if not words or not dims:
+            return parties
+
+        pw, ph = dims
+
+        # Zone: Ship From (Shipper) — left half, upper region
+        shipper_text = PdfPlumberExtractor.extract_text_from_zone(
+            words, pw, ph, x_range=(0.0, 0.5), y_range=(0.05, 0.30)
+        )
+        if shipper_text and len(shipper_text.strip()) > 10:
+            addr = parse_address_block(shipper_text)
+            if addr and addr.name:
+                parties.append(Party(role="shipper", address=addr))
+                logger.info(f"Zone-parsed Shipper: {addr.name}")
+
+        # Zone: Ship To (Consignee) — right half, upper region
+        consignee_text = PdfPlumberExtractor.extract_text_from_zone(
+            words, pw, ph, x_range=(0.5, 1.0), y_range=(0.05, 0.30)
+        )
+        if consignee_text and len(consignee_text.strip()) > 10:
+            addr = parse_address_block(consignee_text)
+            if addr and addr.name:
+                parties.append(Party(role="consignee", address=addr))
+                logger.info(f"Zone-parsed Consignee: {addr.name}")
+
+        return parties
+
+    # ── Mathematical Verification ──
+
+    def _verify_weight_totals(self, doc: BOLDocument) -> None:
+        """Cross-check line item weights vs. total weight."""
+        if not doc.line_items or not doc.totals or not doc.totals.total_weight:
+            return
+
+        computed_weight = sum(
+            item.weight for item in doc.line_items if item.weight is not None
+        )
+        if computed_weight > 0:
+            declared_weight = doc.totals.total_weight
+            tolerance = max(declared_weight * 0.02, 1.0)
+            if abs(computed_weight - declared_weight) > tolerance:
+                doc.extraction_warnings.append(
+                    f"Weight mismatch: line items sum to {computed_weight} "
+                    f"but declared total is {declared_weight}."
+                )
+            else:
+                logger.info(f"Math verification PASSED: {computed_weight} ≈ {declared_weight}")
 
     def _extract_parties(self, text: str) -> list[Party]:
         """Extract shipment parties from ocean BOL."""
