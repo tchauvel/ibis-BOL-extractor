@@ -44,3 +44,4 @@ Thumbs.db
 output/*.json
 *.log
 logs/
+.vercel
