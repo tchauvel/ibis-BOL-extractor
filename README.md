@@ -2,20 +2,20 @@
 
 A production-grade logistics extraction platform that converts unstructured Bills of Lading (BOLs) and Delivery Notes into strict, validated JSON data using Gemini 3.1 Vision AI.
 
-## 🚀 Key Features
+##  Key Features
 - **Template-Free**: Uses Gemini 3.1 Flash-Lite to understand document structure dynamically. No more regex or OCR-zone maintenance.
 - **Multimodal**: Native support for PDF rasterization and direct Image (PNG, JPG, WEBP) processing.
 - **High Accuracy**: Pre-processes documents at 300 DPI for maximum extraction fidelity.
 - **Strict Schema**: Uses Pydantic v2 to enforce data integrity and specific business rules (e.g., numeric weights).
 - **Modern UI**: Secure, responsive frontend with a CSP-compliant audit interface.
 
-## 🏗️ Technical Architecture
+## Technical Architecture
 - **Backend**: FastAPI (Python 3.10+)
 - **Extraction Engine**: Gemini 3.1 Flash-Lite (via direct REST connectivity)
 - **Deployment**: Vercel-optimized consolidated structure.
 - **Frontend**: Vanilla HTML5 / Modern CSS / Event-Delegated JS.
 
-## 📦 Quickstart
+## Quickstart
 
 ### Prerequisites
 1. Get a [Gemini API Key](https://ai.google.dev/).
