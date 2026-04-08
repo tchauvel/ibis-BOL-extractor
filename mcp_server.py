@@ -9,8 +9,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from extraction import extract_bol_vision, preprocess_pdf_to_images
-from schema import UnifiedBOL
+from api.lib.extraction import extract_bol_vision, preprocess_pdf_to_images
+from api.lib.schema import UnifiedBOL
 
 # Initialize FastMCP server
 mcp = FastMCP("Ibis Logistics Extractor")

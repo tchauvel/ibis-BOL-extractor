@@ -16,8 +16,8 @@ from typing import Any
 import fitz  # PyMuPDF — pure-Python wheels, no system deps (Vercel compatible)
 import httpx
 
-from config import settings
-from schema import UnifiedBOL
+from .config import settings
+from .schema import UnifiedBOL
 
 logger = logging.getLogger(__name__)
 
