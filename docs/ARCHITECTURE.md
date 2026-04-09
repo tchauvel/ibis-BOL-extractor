@@ -1,28 +1,36 @@
-# Ibis v2.0 Architecture: The Modern Archivist (2026 Edition)
+# Ibis v2.0 Architecture: The Modern Archivist
 
 The Ibis Logistics Extractor is designed as a Consolidated 3-Phase Vision Pipeline. This document details the technical implementation of each phase within the Vercel-native structure.
 
 ---
 
-## Phase 1: High-Fidelity Normalization (api/lib/extraction.py)
-Direct LLM analysis of raw PDFs often leads to token bloat or failure. Our pipeline normalizes all documents into a high-fidelity image stream before analysis.
-- **Process**: Implements memory-efficient rasterization using fitz (PyMuPDF) to convert PDF pages into 300 DPI JPEG buffers.
-- **Why?**: 300 DPI is the "goldilocks" resolution for Vision-LLMs—high enough for small text (like NMFC codes or lot numbers) without exceeding token limits.
-- **Scope**: Targets pages 1 and 2, ensuring discovery of all headers and primary line items.
+## Phase 1: High-Fidelity Normalization (`api/lib/extraction.py`)
 
-## Phase 2: Sanitization and Structured Orchestration (api/lib/extraction.py)
-Modern Vision-LLMs (Gemini 3.1) in Structured Output mode require a "Pure JSON Schema".
-- **Schema Resolution**: We implement the resolve_schema_refs utility to recursively traverse Pydantic schemas, resolving references ($refs) and stripping metadata ($defs) that Gemini otherwise rejects.
-- **REST Implementation**: We bypass standard SDKs for httpx direct REST calls. This ensures full payload control and eliminates SDK-level model resolution errors.
-- **Persona-Driven Audit**: Injects a high-seniority "Compliance Auditor" persona with logic specialized for enterprise-tier logistics and retail documentation.
+Direct LLM analysis of raw PDFs often leads to token bloat or failure. The pipeline normalizes all documents into a high-fidelity image stream before analysis.
 
-## Phase 3: Validation and Integrity (api/lib/schema.py)
-Final data integrity is enforced via Pydantic v2.
-- **Stricter Validation**: Even if the LLM returns valid JSON, this layer ensures field types, mandatory fields, and proprietary tracking formats (e.g., weights in numeric lbs) are strictly followed.
-- **Dynamic Field Support**: Natively supports specialized fields like BDD, Frozen date, and proprietary Plan numbers.
+- **Process**: Memory-efficient rasterization using `fitz` (PyMuPDF) converts PDF pages into 300 DPI JPEG buffers.
+- **Why 300 DPI**: High enough for small text (NMFC codes, lot numbers, BDD stamps) without exceeding Vision-LLM token limits.
+- **Scope**: Pages 1 and 2, which contain all headers, routing blocks, and primary line items on every BOL format encountered in practice.
+
+## Phase 2: Sanitization and Structured Orchestration (`api/lib/extraction.py`)
+
+Gemini in Structured Output mode requires a "Pure JSON Schema" — no `$ref`, `$defs`, `anyOf`, or metadata fields.
+
+- **Schema Resolution**: The `resolve_schema_refs` utility recursively traverses the Pydantic-generated schema, resolving all references and stripping incompatible metadata before sending to Gemini.
+- **REST Implementation**: Direct `httpx` REST calls bypass the Gemini SDK, giving full payload control and eliminating SDK-level model resolution errors.
+- **Persona-Driven Audit**: The system prompt injects a "Senior Compliance Auditor" persona with explicit rules for language (English only), date format (ISO 8601), weight units (numeric lbs), and reference routing (Plan#, Customer Ref → `other_references`).
+
+## Phase 3: Validation and Integrity (`api/lib/schema.py`)
+
+Final data integrity is enforced via Pydantic v2 with two validation passes:
+
+- **Locale-Aware Date Normalization**: A `model_validator(mode="before")` runs first on the full raw dict. It reads `origin_country_code` (or falls back to `shipper.address.country_code`) to determine whether slash-format dates like `"04/03/2026"` should be parsed as MM/DD (US) or DD/MM (EU/Oceania/Latin America). This resolves the fundamental ambiguity that a field-level validator cannot, because it lacks document context.
+- **Field-Level Validation**: Field validators on `LogisticsDates` handle any remaining date normalization (covering 15 formats including EDI compact, maritime short-year, and European dot-separated). Numeric validators on weight fields strip unit suffixes and coerce strings to floats.
+- **Graceful Degradation**: Maritime fields (`vessel_name`, `seal_number`), cold-chain fields, and optional references default to `null` on standard documents without hallucinating data.
 
 ---
 
 ## Entry Points
-1. **Serverless Handler (api/extract.py)**: Unified FastAPI endpoint optimized for Vercel Serverless Functions.
-2. **MCP Server (mcp_server.py)**: Agentic integration for Claude Desktop and Cursor, enabling local document audits directly via natural language.
+
+1. **Serverless Handler (`api/extract.py`)**: FastAPI endpoint with rate limiting (`slowapi`), security headers, request tracing (`X-Request-ID`), and dual routing (`/extract-bol` + `/api/extract-bol` for Vercel).
+2. **MCP Server (`mcp_server.py`)**: Agentic integration for Claude Desktop and Cursor, enabling local document audits via natural language.
