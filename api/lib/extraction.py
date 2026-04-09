@@ -121,7 +121,10 @@ def extract_bol_vision(
         pydantic.ValidationError: Gemini JSON doesn't match the UnifiedBOL schema.
     """
     if not settings.gemini_api_key:
-        raise ValueError("GEMINI_API_KEY is not configured.")
+        raise ValueError(
+            "GEMINI_API_KEY is not configured. "
+            "Please add it to your Vercel Project Settings > Environment Variables and Redeploy."
+        )
 
     if mime_types is None:
         mime_types = ["image/jpeg"] * len(base64_images)

@@ -103,6 +103,17 @@ def configure_logging() -> None:
     logging.root.handlers = [handler]
     logging.root.setLevel(logging.INFO)
 
+    # Validate critical environment setup
+    if not settings.gemini_api_key:
+        logging.critical(
+            "GEMINI_API_KEY is not configured! "
+            "Extraction will fail. Please set it in Vercel Settings > Environment Variables."
+        )
+    else:
+        # Log limited confirmation (sanitize for SOC2/Privacy)
+        masked_key = f"{settings.gemini_api_key[:4]}...{settings.gemini_api_key[-4:]}"
+        logging.info("GEMINI_API_KEY is configured (starts with: %s)", settings.gemini_api_key[:4])
+
     # Suppress chatty third-party loggers that are not useful in production.
     for noisy in ("httpx", "uvicorn.access", "uvicorn.error"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
