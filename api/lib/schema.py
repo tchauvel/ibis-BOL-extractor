@@ -4,6 +4,8 @@ Strict Pydantic v2 models for logistics extraction.
 Includes validation for weights and specific field naming for Gemini compatibility.
 """
 from __future__ import annotations
+import re
+from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
@@ -26,6 +28,33 @@ class DocumentReference(BaseModel):
     reference_value: str
 
 
+_DATE_FORMATS = [
+    "%Y-%m-%d",       # ISO 8601 — preferred
+    "%d-%b-%Y",       # 30-MAR-2026
+    "%d %b %Y",       # 30 MAR 2026
+    "%m/%d/%Y",       # 03/30/2026
+    "%m/%d/%y",       # 03/30/26
+    "%d/%m/%Y",       # 30/03/2026
+    "%B %d, %Y",      # March 30, 2026
+    "%d-%m-%Y",       # 30-03-2026
+]
+
+
+def _normalize_date(v: Optional[str]) -> Optional[str]:
+    """Coerce any recognized date string to YYYY-MM-DD; leave times unchanged."""
+    if v is None:
+        return None
+    # Already ISO or a time value — pass through
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+        return v
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(v.strip(), fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return v  # unrecognized format: keep as-is rather than losing data
+
+
 class LogisticsDates(BaseModel):
     document_date: Optional[str] = Field(None, description="The generic date printed at the top of the form")
     dispatch_or_ship_date: Optional[str] = Field(None, description="Look specifically for 'Dispatch Date' or 'Ship Date'")
@@ -33,6 +62,11 @@ class LogisticsDates(BaseModel):
     appointment_time: Optional[str] = Field(None, description="Look for 'Appointment Time' in yard management sections")
     arrival_time: Optional[str] = Field(None, description="Look for 'Arrival Time'")
     leaving_time: Optional[str] = Field(None, description="Look for 'Leaving Time'")
+
+    @field_validator("document_date", "dispatch_or_ship_date", "delivery_date", mode="before")
+    @classmethod
+    def normalize_dates(cls, v):
+        return _normalize_date(v)
 
 
 class LineItem(BaseModel):
@@ -65,16 +99,14 @@ class LineItem(BaseModel):
 
 class UnifiedBOL(BaseModel):
     """
-    Unified Pydantic V2 model for logistics extraction.
+    Unified Pydantic model for logistics extraction.
     Strictly follows the technical specification for field naming and types.
     """
     # Document Metadata & Operational Numbers
     bol_number: str
     pro_number: Optional[str] = None
-    plan_number: Optional[str] = Field(None, description="Look for 'Plan#' or proprietary plan identifiers")
     order_number: Optional[str] = Field(None, description="Look for 'Order#', proprietary order patterns, or supplier-specific references")
     web_id: Optional[str] = Field(None, description="Look for 'Web ID#'")
-    customer_reference: Optional[str] = Field(None, description="Look specifically for 'CUSTOMER REF' or 'Customer PO. No.'")
     master_bol_indicator: bool = False
     
     # Dates & Times
