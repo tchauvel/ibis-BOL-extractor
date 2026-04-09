@@ -1,4 +1,4 @@
-# Ibis v2.0 Architecture: The Modern Archivist
+# Architecture:
 
 The Ibis Logistics Extractor is designed as a Consolidated 3-Phase Vision Pipeline. This document details the technical implementation of each phase within the Vercel-native structure.
 
