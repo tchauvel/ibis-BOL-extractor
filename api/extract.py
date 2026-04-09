@@ -104,11 +104,11 @@ async def security_and_tracing(request: Request, call_next):
     # CSP optimized for production hosting
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://vercel.live https://*.vercel-scripts.com; "
+        "script-src 'self' 'unsafe-inline' https://vercel.live https://*.vercel-scripts.com https://cdn.vercel-insights.com; "
         "style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
-        "connect-src 'self' https://*.vercel-insights.com https://vercel.live"
+        "connect-src 'self' https://*.vercel-insights.com https://cdn.vercel-insights.com https://vercel.live"
     )
     return response
 
