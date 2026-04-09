@@ -8,18 +8,18 @@
       }
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/static/(.*)",
-      "dest": "/static/$1"
+      "source": "/static/(.*)",
+      "destination": "/static/$1"
     },
     {
-      "src": "/api/(.*)",
-      "dest": "api/extract.py"
+      "source": "/api/(.*)",
+      "destination": "/api/extract.py"
     },
     {
-      "src": "/(.*)",
-      "dest": "api/extract.py"
+      "source": "/(.*)",
+      "destination": "/api/extract.py"
     }
   ]
 }

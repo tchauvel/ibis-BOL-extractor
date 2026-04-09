@@ -21,9 +21,17 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-# Relative imports from the local function bundle
-from .lib.config import configure_logging, settings
-from .lib.extraction import extract_bol_vision, preprocess_pdf_to_images
+import sys
+from pathlib import Path
+
+# Initialize path-aware environment for serverless boot
+_local_api_root = os.path.dirname(os.path.abspath(__file__))
+if _local_api_root not in sys.path:
+    sys.path.append(_local_api_root)
+
+# Corrected Absolute Imports (Resilient without __init__.py)
+from lib.config import configure_logging, settings
+from lib.extraction import extract_bol_vision, preprocess_pdf_to_images
 
 # Configure logging
 configure_logging()
@@ -58,6 +66,7 @@ app = FastAPI(
     description="High-precision vision extraction API for BOLs and Delivery Notes.",
     version="2.0.0",
     lifespan=lifespan,
+    root_path="/api", # Enables seamless Vercel subdirectory routing
 )
 
 app.state.limiter = limiter
@@ -73,8 +82,8 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],
 )
 
-# Static assets - resolved relative to the function directory
-_static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+# Static assets - resolved relative to the actual project root
+_static_path = os.path.join(os.path.dirname(_local_api_root), "static")
 if os.path.exists(_static_path):
     app.mount("/static", StaticFiles(directory=_static_path), name="static")
 
