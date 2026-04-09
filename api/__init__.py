@@ -38,7 +38,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from lib.config import configure_logging, settings
-from lib.extraction import extract_bol_vision, preprocess_pdf_to_images
+from lib.extraction import extract_bol_vision, extract_document, preprocess_pdf_to_images
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -170,6 +170,37 @@ async def extract_bol(request: Request, file: UploadFile = File(...)):
         raise
     except Exception:
         logger.exception("BOL extraction failed", extra={"request_id": request_id})
+        raise HTTPException(
+            status_code=500,
+            detail="Extraction pipeline failed.",
+            headers={"X-Request-ID": request_id},
+        )
+
+
+@app.post("/extract", tags=["extraction"])
+@app.post("/api/extract", include_in_schema=False)
+@limiter.limit(settings.rate_limit)
+async def extract(request: Request, file: UploadFile = File(...)):
+    request_id: str = getattr(request.state, "request_id", str(uuid.uuid4()))
+    logger.info("Smart extraction request", extra={"request_id": request_id})
+    start = time.monotonic()
+
+    try:
+        base64_images, mime_types, request_id = await _handle_upload(request, file)
+        result = await asyncio.to_thread(extract_document, base64_images, mime_types)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        response_data = result.model_dump()
+        response_data["_pipeline"] = {
+            "processing_time_ms": elapsed_ms,
+            "pages_processed": len(base64_images),
+            "model": "Gemini 3.1 Flash-Lite",
+            "request_id": request_id,
+        }
+        return JSONResponse(content=response_data)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Smart extraction failed", extra={"request_id": request_id})
         raise HTTPException(
             status_code=500,
             detail="Extraction pipeline failed.",
