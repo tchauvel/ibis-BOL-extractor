@@ -144,3 +144,105 @@ def test_validate_relative_path(tmp_path, monkeypatch):
     f.write_bytes(b"data")
     monkeypatch.chdir(tmp_path)
     assert _validate_file_path("doc.pdf").is_file()
+
+
+# ─── New schema imports ────────────────────────────────────────────────────────
+from schema import CartageAdvice, ExtractionResult, GenericDocument, RoutingLeg
+
+
+# ─── RoutingLeg ────────────────────────────────────────────────────────────────
+
+def test_routing_leg_minimal():
+    leg = RoutingLeg(mode="SEA")
+    assert leg.mode == "SEA"
+    assert leg.vessel_name is None
+    assert leg.etd is None
+
+
+def test_routing_leg_full():
+    leg = RoutingLeg(
+        mode="SEA",
+        vessel_name="CAP SAN VINCENT",
+        voyage_number="043N",
+        carrier="MAERSK LINE",
+        load_port="CNNBG",
+        discharge_port="KRPUS",
+        etd="31-Oct-20",
+        eta="02-Nov-20",
+    )
+    assert leg.etd == "2020-10-31"
+    assert leg.eta == "2020-11-02"
+
+
+# ─── CartageAdvice ─────────────────────────────────────────────────────────────
+
+def test_cartage_advice_minimal():
+    ca = CartageAdvice(
+        shipment_number="S03273285",
+        consol_number="C02123952",
+        container_number="HASU5014997",
+    )
+    assert ca.shipment_number == "S03273285"
+    assert ca.routing_legs == []
+    assert ca.goods_description == []
+
+
+def test_cartage_advice_date_normalization():
+    ca = CartageAdvice(
+        shipment_number="S1",
+        consol_number="C1",
+        container_number="X1",
+        document_date="23-Jan-21",
+        available_date="23-Jan-21",
+        storage_starts_date="26-Jan-21",
+    )
+    assert ca.document_date == "2021-01-23"
+    assert ca.available_date == "2021-01-23"
+    assert ca.storage_starts_date == "2021-01-26"
+
+
+def test_cartage_advice_routing_legs():
+    ca = CartageAdvice(
+        shipment_number="S1",
+        consol_number="C1",
+        container_number="X1",
+        routing_legs=[
+            {"mode": "SEA", "vessel_name": "GERNER MAERSK", "voyage_number": "44N"},
+        ],
+    )
+    assert len(ca.routing_legs) == 1
+    assert ca.routing_legs[0].vessel_name == "GERNER MAERSK"
+
+
+# ─── GenericDocument ──────────────────────────────────────────────────────────
+
+def test_generic_document_stores_arbitrary_fields():
+    doc = GenericDocument(fields={"invoice_number": "INV-001", "amount": 1500.0})
+    assert doc.fields["invoice_number"] == "INV-001"
+    assert doc.fields["amount"] == 1500.0
+
+
+def test_generic_document_empty_fields():
+    doc = GenericDocument(fields={})
+    assert doc.fields == {}
+
+
+# ─── ExtractionResult ─────────────────────────────────────────────────────────
+
+def test_extraction_result_bol_type():
+    result = ExtractionResult(document_type="bol", data={"bol_number": "B-001"})
+    assert result.document_type == "bol"
+    assert result.data["bol_number"] == "B-001"
+
+
+def test_extraction_result_cartage_type():
+    result = ExtractionResult(
+        document_type="cartage_advice",
+        data={"shipment_number": "S03273285"},
+    )
+    assert result.document_type == "cartage_advice"
+
+
+def test_extraction_result_unknown_type():
+    result = ExtractionResult(document_type="unknown", data={"foo": "bar"})
+    assert result.document_type == "unknown"

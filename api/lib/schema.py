@@ -259,3 +259,73 @@ class UnifiedBOL(BaseModel):
             except (ValueError, TypeError):
                 return 0.0
         return v
+
+
+# ─── Cartage Advice Models ────────────────────────────────────────────────────
+
+class RoutingLeg(BaseModel):
+    mode: str = Field(..., description="Transport mode: SEA, AIR, RAI, TRK")
+    vessel_name: Optional[str] = None
+    voyage_number: Optional[str] = None
+    carrier: Optional[str] = None
+    load_port: Optional[str] = Field(None, description="UN/LOCODE of loading port, e.g. CNNBG")
+    discharge_port: Optional[str] = Field(None, description="UN/LOCODE of discharge port, e.g. USLGB")
+    etd: Optional[str] = Field(None, description="Estimated Time of Departure (YYYY-MM-DD)")
+    eta: Optional[str] = Field(None, description="Estimated Time of Arrival (YYYY-MM-DD)")
+
+    @field_validator("etd", "eta", mode="before")
+    @classmethod
+    def normalize_leg_dates(cls, v):
+        return _normalize_date(v)
+
+
+class CartageAdvice(BaseModel):
+    """Sea Freight FCL Arrival Cartage Advice — e.g. Rohlig format."""
+    shipment_number: str
+    consol_number: str
+    container_number: str
+    container_type: Optional[str] = Field(None, description="e.g. 40HC FCL")
+    seal_number: Optional[str] = None
+    gross_weight_kg: Optional[float] = None
+    packages: Optional[int] = None
+    volume_m3: Optional[float] = None
+    ocean_bol_number: Optional[str] = None
+    house_bol_number: Optional[str] = None
+    carrier_booking_ref: Optional[str] = None
+    document_date: Optional[str] = None
+    available_date: Optional[str] = None
+    storage_starts_date: Optional[str] = None
+    shipper: Optional[Entity] = None
+    consignee: Optional[Entity] = None
+    routing_legs: List[RoutingLeg] = Field(default_factory=list)
+    goods_description: List[str] = Field(default_factory=list)
+    handling_instructions: Optional[str] = None
+
+    @field_validator("document_date", "available_date", "storage_starts_date", mode="before")
+    @classmethod
+    def normalize_ca_dates(cls, v):
+        return _normalize_date(v)
+
+    @field_validator("gross_weight_kg", "volume_m3", mode="before")
+    @classmethod
+    def parse_ca_numeric(cls, v):
+        if isinstance(v, str):
+            cleaned = "".join(c for c in v if c.isdigit() or c in ".-")
+            try:
+                return float(cleaned)
+            except (ValueError, TypeError):
+                return None
+        return v
+
+
+# ─── Fallback & Envelope Models ──────────────────────────────────────────────
+
+class GenericDocument(BaseModel):
+    """Best-effort extraction for unrecognized document types."""
+    fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExtractionResult(BaseModel):
+    """Envelope returned by /api/extract for all document types."""
+    document_type: str
+    data: dict[str, Any]
