@@ -72,7 +72,7 @@ Replace `/path/to/ibis-pdf-extractor` with the absolute path to the project root
 
 The following tools will now be available:
 - **`extract_logistics_data`** — Pass a local file path (PDF, PNG, JPG, WEBP) to extract structured JSON. Returns a typed result based on the detected document type (`UnifiedBOL`, `CartageAdvice`, or best-effort flat extraction).
-- **`get_logistics_schema`** — Returns the full `UnifiedBOL` JSON schema so Claude understands the available fields.
+- **`get_logistics_schema`** — Returns the JSON schemas for all supported document types (`UnifiedBOL`, `CartageAdvice`, `GenericDocument`) so Claude understands the available fields per type.
 
 ### Steps for Cursor
 

@@ -9,8 +9,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from api.lib.extraction import extract_bol_vision, preprocess_pdf_to_images
-from api.lib.schema import UnifiedBOL
+from api.lib.extraction import extract_document, preprocess_pdf_to_images
+from api.lib.schema import CartageAdvice, GenericDocument, UnifiedBOL
 
 # Initialize FastMCP server
 mcp = FastMCP("Ibis Logistics Extractor")
@@ -46,7 +46,9 @@ def _validate_file_path(file_path: str) -> Path:
 @mcp.tool()
 def extract_logistics_data(file_path: str) -> str:
     """
-    Extracts structured logistics data (BOL, Delivery Note) from a local file path.
+    Extracts structured logistics data from a local file path.
+    Auto-detects the document type (BOL, Cartage Advice, or unknown) and returns
+    a typed JSON envelope: { document_type, data }.
     Supports PDF, PNG, JPG, JPEG, and WEBP.
     """
     try:
@@ -69,8 +71,8 @@ def extract_logistics_data(file_path: str) -> str:
             base64_images = [base64.b64encode(content).decode("utf-8")]
             mime_types = [_MIME_BY_EXT[ext]]
 
-        # 2. Vision Extraction
-        result = extract_bol_vision(base64_images, mime_types)
+        # 2. Auto-detect type + extract
+        result = extract_document(base64_images, mime_types)
 
         # 3. Return as pretty JSON
         return json.dumps(result.model_dump(), indent=2)
@@ -82,10 +84,15 @@ def extract_logistics_data(file_path: str) -> str:
 @mcp.tool()
 def get_logistics_schema() -> str:
     """
-    Returns the JSON representation of the UnifiedBOL schema to help the agent
-    understand the available logistics fields and data structure.
+    Returns the JSON schemas for all supported document types so the agent
+    understands the available fields per document type.
     """
-    return json.dumps(UnifiedBOL.model_json_schema(), indent=2)
+    schemas = {
+        "bol": UnifiedBOL.model_json_schema(),
+        "cartage_advice": CartageAdvice.model_json_schema(),
+        "unknown": GenericDocument.model_json_schema(),
+    }
+    return json.dumps(schemas, indent=2)
 
 
 if __name__ == "__main__":
