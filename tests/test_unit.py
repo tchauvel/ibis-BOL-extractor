@@ -286,3 +286,101 @@ def test_get_registry_entry_unknown_string_falls_back():
 def test_classification_prompt_lists_known_types():
     for t in ("bol", "cartage_advice", "unknown"):
         assert t in CLASSIFICATION_PROMPT, f"CLASSIFICATION_PROMPT missing '{t}'"
+
+# ─── classify_document & extract_document ─────────────────────────────────────
+from unittest.mock import MagicMock, patch
+
+from extraction import classify_document, extract_document
+
+
+def _fake_gemini_response(text: str):
+    """Build a minimal fake Gemini REST response."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "candidates": [{"content": {"parts": [{"text": text}]}}]
+    }
+    return mock_resp
+
+
+def test_classify_document_returns_bol():
+    with patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response("bol")
+        )
+        result = classify_document(["fake_b64_image"])
+    assert result == "bol"
+
+
+def test_classify_document_returns_cartage_advice():
+    with patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response("cartage_advice\n")
+        )
+        result = classify_document(["fake_b64_image"])
+    assert result == "cartage_advice"
+
+
+def test_classify_document_unknown_response_falls_back():
+    with patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response("invoice")
+        )
+        result = classify_document(["fake_b64_image"])
+    assert result == "unknown"
+
+
+def test_classify_document_strips_whitespace():
+    with patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response("  BOL  ")
+        )
+        result = classify_document(["fake_b64_image"])
+    assert result == "bol"
+
+
+def test_extract_document_returns_extraction_result_for_bol():
+    fake_bol_json = """{
+        "bol_number": "TEST-001",
+        "shipper": {"name": "S", "address": {"address_line": "1 A", "city": "C", "state": "CA", "zip_code": "90001"}},
+        "consignee": {"name": "C", "address": {"address_line": "2 B", "city": "D", "state": "NY", "zip_code": "10001"}},
+        "carrier_name": "Fast Freight",
+        "grand_total_weight_lbs": 100.0,
+        "grand_total_handling_units": 1
+    }"""
+    with patch("extraction.classify_document", return_value="bol"), \
+         patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response(fake_bol_json)
+        )
+        result = extract_document(["fake_b64"])
+    assert result.document_type == "bol"
+    assert result.data["bol_number"] == "TEST-001"
+
+
+def test_extract_document_returns_extraction_result_for_cartage_advice():
+    fake_ca_json = """{
+        "shipment_number": "S03273285",
+        "consol_number": "C02123952",
+        "container_number": "HASU5014997"
+    }"""
+    with patch("extraction.classify_document", return_value="cartage_advice"), \
+         patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response(fake_ca_json)
+        )
+        result = extract_document(["fake_b64"])
+    assert result.document_type == "cartage_advice"
+    assert result.data["shipment_number"] == "S03273285"
+
+
+def test_extract_document_unknown_type_returns_generic():
+    fake_generic_json = '{"fields": {"invoice_number": "INV-001"}}'
+    with patch("extraction.classify_document", return_value="unknown"), \
+         patch("extraction.httpx.Client") as mock_client_cls:
+        mock_client_cls.return_value.__enter__.return_value.post.return_value = (
+            _fake_gemini_response(fake_generic_json)
+        )
+        result = extract_document(["fake_b64"])
+    assert result.document_type == "unknown"
+    assert result.data["fields"]["invoice_number"] == "INV-001"

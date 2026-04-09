@@ -1,9 +1,11 @@
 """
 extraction.py — Document Pipeline: Rasterisation + Vision-LLM Extraction
 
-Two responsibilities intentionally kept in one file:
+Three responsibilities:
   1. preprocess_pdf_to_images  — converts PDF bytes to base64 JPEG images
-  2. extract_bol_vision        — sends images to Gemini and returns a UnifiedBOL
+  2. classify_document         — Pass 1: identifies document type via plain-text prompt
+  3. extract_document          — Pass 1 + Pass 2: classify then extract with typed schema
+  4. extract_bol_vision        — legacy helper (calls _extract_with_schema with UnifiedBOL)
 """
 from __future__ import annotations
 
@@ -13,46 +15,21 @@ import json
 import logging
 from typing import Any
 
-import fitz  # PyMuPDF — pure-Python wheels, no system deps (Vercel compatible)
+import fitz  # PyMuPDF
 import httpx
+from pydantic import BaseModel
 
 from lib.config import settings
-from lib.schema import UnifiedBOL
+
+try:
+    from schema import ExtractionResult, UnifiedBOL
+except ImportError:
+    from lib.schema import ExtractionResult, UnifiedBOL  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
 MODEL_ID = "gemini-3.1-flash-lite-preview"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_ID}:generateContent"
-
-SYSTEM_PROMPT = """
-Act as a Senior Logistics Compliance Auditor and Document AI Specialist.
-Your task is to extract high-accuracy structured data from the provided Bill of Lading (BOL), Delivery Note, or Master BOL images.
-
-CONTEXT:
-You are analyzing highly customized Delivery Notes and Master BOLs from major global logistics providers and multinational retailers.
-These documents contain critical proprietary tracking numbers and granular operational metadata.
-
-LANGUAGE & FORMAT RULES (MANDATORY — never deviate):
-- ALL output must be in ENGLISH only. Never translate field names, values, or labels into any other language (French, Spanish, etc.).
-- All JSON field names must exactly match the schema keys (e.g., "shipper", "consignee", "address_line", "city", "state", "zip_code"). Never substitute French or other translated equivalents.
-- All dates must be formatted as YYYY-MM-DD (ISO 8601). Convert any date found on the document (e.g., "30 MAR 2026", "30-MAR-2026", "03/30/26") to this format.
-- All weights must be numeric values in lbs (pounds) only. Strip any unit suffixes (e.g., "1250 lbs" → 1250.0).
-- Phone numbers must be formatted as plain digits with country code when available (e.g., "+1-555-123-4567").
-- Addresses: "address_line" is the street address, "city" is the city name, "state" is the state/region/department code, "zip_code" is the postal code, "country_code" is the ISO 3166-1 alpha-2 country code (e.g. "US", "FR", "DE"). Never use alternative field names.
-- Always populate "origin_country_code" at the top level with the shipper's ISO 3166-1 alpha-2 country code. This is critical for correct date parsing.
-
-RULES FOR EXTRACTION:
-1. **Persona**: You are an auditor. Precision is everything.
-2. **Noise Reduction**: Aggressively ignore barcodes, standard Terms & Conditions boilerplate, and logos.
-3. **Operational Numbers**: Pay extremely close attention to the header blocks for internal numbers like 'Order#', 'Web ID#', 'Waybill No.', 'AWB', 'Airway Bill', and proprietary IDs.
-4. **Catch-All References**: Place 'Plan#', 'Customer Reference', 'Customer PO. No.', 'CUSTOMER REF', and any other reference/tracking numbers that do not map to bol_number, pro_number, order_number, or web_id into the `other_references` array with descriptive `reference_label` values (e.g., "Plan#", "Customer Reference").
-5. **Data Integrity**:
-   - Capture handling unit quantities (PLT, SKD) and package counts (Cartons, Boxes) accurately.
-   - Extract weights as numeric values in lbs only.
-6. **Inventory Tables**: Scan tables carefully. Look below or next to commodity descriptions for hidden cold-storage metadata like 'Best before', 'BDD' (Expiration Date), 'Frozen date', and 'BatchLot'.
-7. **Signatures**: Set boolean flags only if a physical signature or stamp is visible.
-8. **Output**: Return ONLY a valid JSON object matching the provided schema. No markdown. No explanatory text.
-"""
 
 
 # ─── Rasterisation ────────────────────────────────────────────────────────────
@@ -60,17 +37,12 @@ RULES FOR EXTRACTION:
 def preprocess_pdf_to_images(pdf_bytes: bytes) -> list[str]:
     """
     Converts the first two pages of a PDF to 300 DPI JPEG images.
-
-    300 DPI is the optimal resolution for Vision-LLMs: high enough for small text
-    (NMFC codes, lot numbers) without excessive token usage.
-
     Returns a list of base64-encoded JPEG strings ready for Gemini inlineData.
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     result = []
     for page_num in range(min(2, len(doc))):
         page = doc[page_num]
-        # 300 DPI → matrix scale factor ≈ 4.17 (300/72)
         mat = fitz.Matrix(300 / 72, 300 / 72)
         pix = page.get_pixmap(matrix=mat, colorspace=fitz.csRGB)
         buf = io.BytesIO(pix.tobytes("jpeg", jpg_quality=85))
@@ -107,75 +79,139 @@ def resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     return _resolve(schema)
 
 
-# Computed once at module load — never changes at runtime.
-_RESOLVED_SCHEMA: dict[str, Any] = resolve_schema_refs(UnifiedBOL.model_json_schema())
+# ─── Internal Gemini call ─────────────────────────────────────────────────────
+
+def _call_gemini(payload: dict[str, Any]) -> str:
+    """
+    Sends payload to Gemini REST and returns the raw text response.
+    Raises ValueError on HTTP errors or malformed responses.
+    """
+    if not settings.gemini_api_key:
+        raise ValueError(
+            "GEMINI_API_KEY is not configured. "
+            "Add it to Vercel Project Settings > Environment Variables and redeploy."
+        )
+
+    with httpx.Client(timeout=60.0) as client:
+        response = client.post(
+            API_URL,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": settings.gemini_api_key,
+            },
+        )
+
+    if response.status_code != 200:
+        logger.error("Gemini API returned HTTP %d", response.status_code)
+        raise ValueError(f"Gemini API error (HTTP {response.status_code})")
+
+    try:
+        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as exc:
+        logger.error("Unexpected Gemini response structure")
+        raise ValueError("Malformed Gemini response") from exc
 
 
-# ─── Extraction ───────────────────────────────────────────────────────────────
+def _build_image_parts(base64_images: list[str], mime_types: list[str]) -> list[dict]:
+    return [
+        {"inlineData": {"mimeType": mime, "data": b64}}
+        for b64, mime in zip(base64_images, mime_types)
+    ]
+
+
+# ─── Generic extraction ───────────────────────────────────────────────────────
+
+def _extract_with_schema(
+    base64_images: list[str],
+    mime_types: list[str],
+    schema_cls: type[BaseModel],
+    system_prompt: str,
+) -> BaseModel:
+    """
+    Calls Gemini with structured output enforced for schema_cls.
+    Returns an instance of schema_cls.
+    """
+    resolved_schema = resolve_schema_refs(schema_cls.model_json_schema())
+    payload: dict[str, Any] = {
+        "contents": [{"parts": [{"text": system_prompt}, *_build_image_parts(base64_images, mime_types)]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": resolved_schema,
+        },
+    }
+    text = _call_gemini(payload)
+    return schema_cls(**json.loads(text))
+
+
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+def classify_document(
+    base64_images: list[str],
+    mime_types: list[str] | None = None,
+) -> str:
+    """
+    Pass 1: asks Gemini to identify the document type.
+    Returns one of: 'bol', 'cartage_advice', 'unknown'.
+    Any response not in the registry falls back to 'unknown'.
+    """
+    try:
+        from registry import CLASSIFICATION_PROMPT, REGISTRY  # type: ignore[import]
+    except ImportError:
+        from lib.registry import CLASSIFICATION_PROMPT, REGISTRY  # type: ignore[no-redef]
+
+    if mime_types is None:
+        mime_types = ["image/jpeg"] * len(base64_images)
+
+    payload: dict[str, Any] = {
+        "contents": [{"parts": [{"text": CLASSIFICATION_PROMPT}, *_build_image_parts(base64_images, mime_types)]}],
+    }
+
+    try:
+        raw = _call_gemini(payload)
+        doc_type = raw.strip().lower()
+        return doc_type if doc_type in REGISTRY else "unknown"
+    except Exception:
+        logger.exception("Document classification failed — falling back to 'unknown'")
+        return "unknown"
+
+
+def extract_document(
+    base64_images: list[str],
+    mime_types: list[str] | None = None,
+) -> ExtractionResult:
+    """
+    Pass 1 + Pass 2: classify the document, then extract with the matched schema.
+    Always returns an ExtractionResult — never raises for unknown document types.
+    """
+    try:
+        from registry import get_registry_entry  # type: ignore[import]
+    except ImportError:
+        from lib.registry import get_registry_entry  # type: ignore[no-redef]
+
+    if mime_types is None:
+        mime_types = ["image/jpeg"] * len(base64_images)
+
+    doc_type = classify_document(base64_images, mime_types)
+    schema_cls, system_prompt = get_registry_entry(doc_type)
+
+    instance = _extract_with_schema(base64_images, mime_types, schema_cls, system_prompt)
+    return ExtractionResult(document_type=doc_type, data=instance.model_dump())
+
 
 def extract_bol_vision(
     base64_images: list[str],
     mime_types: list[str] | None = None,
 ) -> UnifiedBOL:
     """
-    Calls Gemini via direct REST for full payload control and Structured Output.
-
-    Args:
-        base64_images: Base64-encoded image strings.
-        mime_types: MIME type per image. Defaults to image/jpeg (correct for
-                    PDF-rasterised output). Pass ["image/png"] etc. for direct images.
-
-    Raises:
-        ValueError: GEMINI_API_KEY missing, or Gemini returned an error/malformed response.
-        pydantic.ValidationError: Gemini JSON doesn't match the UnifiedBOL schema.
+    Legacy single-schema extraction. Kept for backward compatibility with /extract-bol.
     """
-    if not settings.gemini_api_key:
-        raise ValueError(
-            "GEMINI_API_KEY is not configured. "
-            "Please add it to your Vercel Project Settings > Environment Variables and Redeploy."
-        )
+    try:
+        from registry import BOL_SYSTEM_PROMPT  # type: ignore[import]
+    except ImportError:
+        from lib.registry import BOL_SYSTEM_PROMPT  # type: ignore[no-redef]
 
     if mime_types is None:
         mime_types = ["image/jpeg"] * len(base64_images)
 
-    if len(mime_types) != len(base64_images):
-        raise ValueError("mime_types length must match base64_images length.")
-
-    payload: dict[str, Any] = {
-        "contents": [{"parts": [{"text": SYSTEM_PROMPT}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "responseSchema": _RESOLVED_SCHEMA,
-        },
-    }
-    for b64, mime in zip(base64_images, mime_types):
-        payload["contents"][0]["parts"].append(
-            {"inlineData": {"mimeType": mime, "data": b64}}
-        )
-
-    try:
-        with httpx.Client(timeout=60.0) as client:
-            response = client.post(
-                API_URL,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": settings.gemini_api_key,
-                },
-            )
-
-        if response.status_code != 200:
-            logger.error("Gemini API returned HTTP %d", response.status_code)
-            raise ValueError(f"Gemini API error (HTTP {response.status_code})")
-
-        try:
-            text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError) as exc:
-            logger.error("Unexpected Gemini response structure")
-            raise ValueError("Malformed Gemini response") from exc
-
-        return UnifiedBOL(**json.loads(text))
-
-    except Exception:
-        logger.exception("Gemini REST extraction failed")
-        raise
+    return _extract_with_schema(base64_images, mime_types, UnifiedBOL, BOL_SYSTEM_PROMPT)  # type: ignore[return-value]
