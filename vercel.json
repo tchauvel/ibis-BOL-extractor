@@ -10,16 +10,12 @@
   ],
   "rewrites": [
     {
-      "source": "/static/(.*)",
-      "destination": "/static/$1"
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api/extract.py"
+      "destination": "api/extract.py"
     },
     {
       "source": "/(.*)",
-      "destination": "/api/extract.py"
+      "destination": "api/extract.py"
     }
   ]
 }

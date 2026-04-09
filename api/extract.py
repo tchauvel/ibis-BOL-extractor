@@ -82,8 +82,8 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],
 )
 
-# Static assets - resolved relative to the actual project root
-_static_path = os.path.join(os.path.dirname(_local_api_root), "static")
+# Static assets - resolved relative to the function root (atomic bundling)
+_static_path = os.path.join(_local_api_root, "static")
 if os.path.exists(_static_path):
     app.mount("/static", StaticFiles(directory=_static_path), name="static")
 
