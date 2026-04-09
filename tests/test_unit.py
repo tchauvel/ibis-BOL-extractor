@@ -246,3 +246,43 @@ def test_extraction_result_cartage_type():
 def test_extraction_result_unknown_type():
     result = ExtractionResult(document_type="unknown", data={"foo": "bar"})
     assert result.document_type == "unknown"
+
+# ─── Registry ─────────────────────────────────────────────────────────────────
+from lib.registry import CLASSIFICATION_PROMPT, REGISTRY, get_registry_entry
+
+
+def test_registry_contains_all_known_types():
+    for t in ("bol", "cartage_advice", "unknown"):
+        assert t in REGISTRY, f"REGISTRY missing '{t}'"
+
+
+def test_registry_values_are_schema_prompt_tuples():
+    from pydantic import BaseModel
+    for doc_type, (schema_cls, prompt) in REGISTRY.items():
+        assert issubclass(schema_cls, BaseModel), f"{doc_type}: schema must be a BaseModel subclass"
+        assert isinstance(prompt, str) and len(prompt) > 50, f"{doc_type}: prompt too short"
+
+
+def test_get_registry_entry_returns_bol():
+    schema_cls, prompt = get_registry_entry("bol")
+    assert schema_cls is UnifiedBOL
+
+
+def test_get_registry_entry_returns_cartage_advice():
+    schema_cls, prompt = get_registry_entry("cartage_advice")
+    assert schema_cls is CartageAdvice
+
+
+def test_get_registry_entry_unknown_type_falls_back_to_generic():
+    schema_cls, prompt = get_registry_entry("invoice")
+    assert schema_cls is GenericDocument
+
+
+def test_get_registry_entry_unknown_string_falls_back():
+    schema_cls, _ = get_registry_entry("completely_unknown_type_xyz")
+    assert schema_cls is GenericDocument
+
+
+def test_classification_prompt_lists_known_types():
+    for t in ("bol", "cartage_advice", "unknown"):
+        assert t in CLASSIFICATION_PROMPT, f"CLASSIFICATION_PROMPT missing '{t}'"
