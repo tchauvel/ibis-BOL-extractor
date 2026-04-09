@@ -1,0 +1,12 @@
+{
+  "name": "ibis-bol-extractor",
+  "version": "2.0.0",
+  "description": "IBIS PDF Extractor - Speed Insights integration",
+  "private": true,
+  "scripts": {
+    "postinstall": "echo 'Speed Insights installed successfully'"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.1.0"
+  }
+}
