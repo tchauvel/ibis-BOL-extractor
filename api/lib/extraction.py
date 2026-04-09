@@ -43,7 +43,7 @@ LANGUAGE & FORMAT RULES (MANDATORY — never deviate):
 RULES FOR EXTRACTION:
 1. **Persona**: You are an auditor. Precision is everything.
 2. **Noise Reduction**: Aggressively ignore barcodes, standard Terms & Conditions boilerplate, and logos.
-3. **Operational Numbers**: Pay extremely close attention to the header blocks for internal numbers like 'Order#', 'Web ID#', and proprietary IDs.
+3. **Operational Numbers**: Pay extremely close attention to the header blocks for internal numbers like 'Order#', 'Web ID#', 'Waybill No.', 'AWB', 'Airway Bill', and proprietary IDs.
 4. **Catch-All References**: Place 'Plan#', 'Customer Reference', 'Customer PO. No.', 'CUSTOMER REF', and any other reference/tracking numbers that do not map to bol_number, pro_number, order_number, or web_id into the `other_references` array with descriptive `reference_label` values (e.g., "Plan#", "Customer Reference").
 5. **Data Integrity**:
    - Capture handling unit quantities (PLT, SKD) and package counts (Cartons, Boxes) accurately.

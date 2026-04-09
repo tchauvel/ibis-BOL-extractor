@@ -105,6 +105,7 @@ class UnifiedBOL(BaseModel):
     # Document Metadata & Operational Numbers
     bol_number: str
     pro_number: Optional[str] = None
+    waybill_number: Optional[str] = Field(None, description="Look for 'Waybill', 'Waybill No.', 'Airway Bill', 'AWB', or 'Air Waybill Number'")
     order_number: Optional[str] = Field(None, description="Look for 'Order#', proprietary order patterns, or supplier-specific references")
     web_id: Optional[str] = Field(None, description="Look for 'Web ID#'")
     master_bol_indicator: bool = False
