@@ -1,4 +1,4 @@
-# Deployment Guide: Ibis BOL Extractor
+# Deployment Guide: Ibis Logistics Extractor
 
 This guide covers deploying the Ibis platform to production and agentic environments in the 2026 stack.
 
@@ -29,6 +29,12 @@ pip install -r requirements.txt
 
 # Start Server
 python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+Test the endpoint:
+```bash
+curl -X POST "http://localhost:8000/extract" \
+     -F "file=@your_document.pdf" | jq
 ```
 
 ## 3. Agentic Deployment (MCP)

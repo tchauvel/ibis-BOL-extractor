@@ -83,9 +83,9 @@ The `data` field contains a typed schema depending on `document_type`:
 
 See [`docs/API.md`](docs/API.md) for the full schema reference.
 
-### POST /extract-bol *(legacy)*
+### POST /extract-bol *(legacy — not recommended)*
 
-Always extracts using the `UnifiedBOL` schema regardless of document type. Kept for backward compatibility. Returns a flat `UnifiedBOL` object with a `_pipeline` block.
+Always extracts as `UnifiedBOL` regardless of document type. Kept for backward compatibility only — use `/extract` for all new integrations.
 
 ## Deployment
 
