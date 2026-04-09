@@ -148,10 +148,24 @@ The repository is structured to deploy natively to Vercel.
 3.  Set the function timeout (`maxDuration`) to 60 seconds in your `vercel.json` to accommodate LLM processing times.
 
 ### 2. Agentic MCP Integration
-To use the Ibis extractor as a native tool in Claude Desktop or Cursor, you can register it as a Model Context Protocol (MCP) server:
-1.  Open your Claude Desktop config file: `~/Library/Application Support/Claude/claude_desktop_config.json`
-2.  Add the Ibis server to the `mcpServers` block.
-3.  Restart Claude Desktop. The `ibis-extractor` tool will now be available for document analysis via natural language.
+To use the Ibis extractor as a native tool in Claude Desktop or Cursor, add the following to your MCP config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ibis-extractor": {
+      "command": "python3",
+      "args": ["mcp_server.py"],
+      "cwd": "/path/to/ibis-pdf-extractor",
+      "env": {
+        "GEMINI_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The `extract_logistics_data` and `get_logistics_schema` tools will be available for document analysis via natural language. See `docs/DEPLOYMENT.md` for full setup details including virtual environment and Cursor configuration.
 
 ---
 **License**: Internal Proprietary - Ibis Labs

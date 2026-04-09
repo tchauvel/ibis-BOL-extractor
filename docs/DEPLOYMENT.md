@@ -35,11 +35,48 @@ python3 -m uvicorn api.extract:app --host 0.0.0.0 --port 8000
 
 To use the Ibis extractor as a native tool in Claude Desktop or Cursor, register it as an MCP server.
 
-### Steps for Claude Desktop:
-1. Open your Claude Desktop config file:
-   ~/Library/Application Support/Claude/claude_desktop_config.json
-2. Add the Ibis server to the mcpServers block.
-3. Restart Claude Desktop. The ibis-extractor tools will now be available for document analysis.
+### Steps for Claude Desktop (macOS)
+
+**1. Install dependencies** (if not already done):
+```bash
+cd /path/to/ibis-pdf-extractor
+pip install -r requirements.txt
+```
+
+**2. Open your Claude Desktop config file:**
+```
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+**3. Add the `ibis-extractor` block to `mcpServers`:**
+```json
+{
+  "mcpServers": {
+    "ibis-extractor": {
+      "command": "python3",
+      "args": ["mcp_server.py"],
+      "cwd": "/path/to/ibis-pdf-extractor",
+      "env": {
+        "GEMINI_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+Replace `/path/to/ibis-pdf-extractor` with the absolute path to the project root (the directory containing `mcp_server.py`). The `cwd` is required — the server imports from `api.lib` relative to the project root.
+
+> **Using a virtual environment?** Replace `"python3"` with the full path to your venv interpreter, e.g. `"/path/to/ibis-pdf-extractor/.venv/bin/python"`.
+
+**4. Restart Claude Desktop.**
+
+The following tools will now be available:
+- **`extract_logistics_data`** — Pass a local file path (PDF, PNG, JPG, WEBP) to extract a full `UnifiedBOL` JSON object.
+- **`get_logistics_schema`** — Returns the full `UnifiedBOL` JSON schema so Claude understands the available fields.
+
+### Steps for Cursor
+
+Add the same block under `mcpServers` in your Cursor MCP settings (`~/.cursor/mcp.json`).
 
 ## 4. Production Considerations
 - **Memory**: Minimum 1GB RAM recommended for PDF rasterization.
