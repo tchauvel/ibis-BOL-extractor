@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('file', file);
 
-        const response = await fetch(`/extract-bol`, {
+        const response = await fetch(`/extract`, {
             method: 'POST',
             body: formData,
         });
@@ -137,24 +137,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Result Card Rendering ───────────────────────────────────────────────
 
-    function showResult(filename, data) {
+    function showResult(filename, response) {
         const cardId = `res-${Date.now()}`;
         const card = document.createElement('div');
         card.className = 'result-card';
         card.id = cardId;
 
-        const pipeline = data._pipeline || {};
+        const pipeline = response._pipeline || {};
         const latency = pipeline.processing_time_ms;
-        const timeStr = latency ? (latency > 1000 ? 
-            `${(latency / 1000).toFixed(1)}s` : 
+        const timeStr = latency ? (latency > 1000 ?
+            `${(latency / 1000).toFixed(1)}s` :
             `${latency}ms`) : '--';
 
-        // Deep Audit Metadata
-        const bolNum = data.bol_number || 'N/A';
-        const carrier = data.carrier_name || 'Unknown Carrier';
+        // Support both new envelope { document_type, data } and legacy flat format
+        const docType = response.document_type || 'bol';
+        const data = response.data || response;
+
+        // Card subtitle: pick the most meaningful identifier per document type
+        const primaryRef = data.bol_number || data.shipment_number || data.house_bol_number || 'N/A';
+        const secondaryRef = data.carrier_name || data.container_number || data.consol_number || 'Unknown';
+        const docTypeLabel = docType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
         const displayData = { ...data };
-        delete displayData._pipeline;
 
         card.innerHTML = `
             <div class="card-header">
@@ -162,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="file-icon">📜</div>
                     <div>
                         <div class="file-name">${escapeHtml(filename)}</div>
-                        <div class="file-meta">BOL: ${escapeHtml(bolNum)} · ${escapeHtml(carrier)}</div>
+                        <div class="file-meta">${escapeHtml(docTypeLabel)} · ${escapeHtml(primaryRef)} · ${escapeHtml(secondaryRef)}</div>
                     </div>
                 </div>
                 <div class="card-badges">
@@ -202,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        card.dataset.json = JSON.stringify(data, null, 2);
+        card.dataset.json = JSON.stringify(response, null, 2);
         card.dataset.filename = filename;
         resultsList.prepend(card);
     }

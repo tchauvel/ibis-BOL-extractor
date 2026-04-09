@@ -63,7 +63,15 @@ RULES FOR EXTRACTION:
 1. Extract shipment_number (e.g. S03273285), consol_number (e.g. C02123952) from the header.
 2. Extract container_number, container_type (e.g. 40HC FCL), seal_number from the container details section.
 3. Extract ocean_bol_number and house_bol_number from the goods description section.
-4. Extract ALL routing legs from the routing table — each row is one RoutingLeg with mode, vessel_name, voyage_number, carrier, load_port, discharge_port, etd, eta.
+4. Extract ALL routing legs from the ROUTING INFORMATION table. The table has these exact columns — map them carefully:
+   - "Mode" column → mode (e.g. "SEA", "RAI", "AIR", "TRK")
+   - "Vessel / Voyage / IMO(Lloyds)" column → split into vessel_name and voyage_number (ignore the IMO number)
+   - "Carrier" column → carrier
+   - "Load" column → load_port (UN/LOCODE, e.g. "CNNBG", "KRPUS", "USLGB")
+   - "Disch" column → discharge_port (UN/LOCODE, e.g. "KRPUS", "USLGB", "USCLE")
+   - "ETD" column → etd (convert to YYYY-MM-DD, e.g. "31-Oct-20" → "2020-10-31")
+   - "ETA" column → eta (convert to YYYY-MM-DD, e.g. "02-Nov-20" → "2020-11-02")
+   Every row in the routing table must produce one routing leg entry. Do not skip rows.
 5. Extract goods_description as a list of strings (each commodity/product name).
 6. Extract available_date and storage_starts_date from the header.
 7. Extract handling_instructions as a single string (combine all handling/delivery instruction text).
