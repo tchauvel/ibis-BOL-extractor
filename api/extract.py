@@ -66,7 +66,6 @@ app = FastAPI(
     description="High-precision vision extraction API for BOLs and Delivery Notes.",
     version="2.0.0",
     lifespan=lifespan,
-    root_path="/api", # Enables seamless Vercel subdirectory routing
 )
 
 app.state.limiter = limiter
@@ -116,6 +115,7 @@ async def security_and_tracing(request: Request, call_next):
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["ops"])
+@app.get("/api/health", include_in_schema=False)
 async def health():
     return {"status": "ok", "version": app.version}
 
@@ -129,6 +129,7 @@ async def read_index():
 
 
 @app.post("/extract-bol", tags=["extraction"])
+@app.post("/api/extract-bol", include_in_schema=False)
 @limiter.limit(settings.rate_limit)
 async def extract_bol(request: Request, file: UploadFile = File(...)):
     request_id: str = getattr(request.state, "request_id", str(uuid.uuid4()))
