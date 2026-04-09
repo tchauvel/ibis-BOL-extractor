@@ -38,7 +38,8 @@ LANGUAGE & FORMAT RULES (MANDATORY — never deviate):
 - All dates must be formatted as YYYY-MM-DD (ISO 8601). Convert any date found on the document (e.g., "30 MAR 2026", "30-MAR-2026", "03/30/26") to this format.
 - All weights must be numeric values in lbs (pounds) only. Strip any unit suffixes (e.g., "1250 lbs" → 1250.0).
 - Phone numbers must be formatted as plain digits with country code when available (e.g., "+1-555-123-4567").
-- Addresses: "address_line" is the street address, "city" is the city name, "state" is the state/region/department code, "zip_code" is the postal code. Never use alternative field names.
+- Addresses: "address_line" is the street address, "city" is the city name, "state" is the state/region/department code, "zip_code" is the postal code, "country_code" is the ISO 3166-1 alpha-2 country code (e.g. "US", "FR", "DE"). Never use alternative field names.
+- Always populate "origin_country_code" at the top level with the shipper's ISO 3166-1 alpha-2 country code. This is critical for correct date parsing.
 
 RULES FOR EXTRACTION:
 1. **Persona**: You are an auditor. Precision is everything.

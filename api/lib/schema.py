@@ -1,20 +1,112 @@
 """
 schema.py — Unified BOL Data Model
 Strict Pydantic v2 models for logistics extraction.
-Includes validation for weights and specific field naming for Gemini compatibility.
+Includes validation for weights and locale-aware date normalization.
 """
 from __future__ import annotations
 import re
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, List, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+
+# ─── Date Normalisation ───────────────────────────────────────────────────────
+
+# Countries that write dates as DD/MM/YYYY (not MM/DD/YYYY).
+# Used to resolve the slash-date ambiguity: "04/03/2026" = Apr 3 (US) vs Mar 4 (EU).
+_DD_MM_COUNTRIES = {
+    # Europe
+    "FR", "DE", "NL", "BE", "ES", "IT", "PT", "AT", "CH",
+    "PL", "SE", "NO", "DK", "FI", "CZ", "HU", "RO", "BG",
+    "HR", "GR", "SK", "SI", "LT", "LV", "EE", "LU", "MT",
+    # UK & Ireland
+    "GB", "IE",
+    # Oceania
+    "AU", "NZ",
+    # Latin America (most use DD/MM)
+    "BR", "AR", "CL", "CO", "MX", "PE",
+    # Africa (Francophone)
+    "MA", "TN", "DZ", "SN", "CI",
+}
+
+# Unambiguous formats (named months, ISO, EDI) — order doesn't matter for these.
+_FORMATS_UNAMBIGUOUS = [
+    "%Y-%m-%d",     # ISO 8601            2026-03-30
+    "%Y%m%d",       # EDI/ANSI X12        20260330
+    "%d-%b-%Y",     # 30-MAR-2026         maritime/ocean standard
+    "%d %b %Y",     # 30 MAR 2026
+    "%d-%b-%y",     # 30-MAR-26           maritime short year
+    "%b %d, %Y",    # Mar 30, 2026
+    "%b %d %Y",     # Mar 30 2026
+    "%B %d, %Y",    # March 30, 2026
+    "%B %d %Y",     # March 30 2026
+]
+
+# Ambiguous slash/dot formats — order is locale-dependent.
+_FORMATS_SLASH_US = [
+    "%m/%d/%Y",     # 03/30/2026  US
+    "%m/%d/%y",     # 03/30/26    US short
+    "%d/%m/%Y",     # 30/03/2026  EU
+    "%d/%m/%y",     # 30/03/26    EU short
+    "%d.%m.%Y",     # 30.03.2026  European dot
+    "%d.%m.%y",     # 30.03.26    European dot short
+    "%d-%m-%Y",     # 30-03-2026
+]
+
+_FORMATS_SLASH_EU = [
+    "%d/%m/%Y",     # 30/03/2026  EU  ← promoted
+    "%d/%m/%y",     # 30/03/26    EU short
+    "%m/%d/%Y",     # 03/30/2026  US  (fallback — only valid when day > 12)
+    "%m/%d/%y",     # 03/30/26    US short
+    "%d.%m.%Y",     # 30.03.2026  European dot
+    "%d.%m.%y",     # 30.03.26
+    "%d-%m-%Y",     # 30-03-2026
+]
+
+# Captures the date prefix from datetime strings like "30 MAR 2026 14:00" or "2026-03-30T14:00"
+_DATETIME_PREFIX = re.compile(
+    r"^(\d{1,2}[-/ ]\w+[-/ ]\d{2,4}|\d{4}[-/]\d{2}[-/]\d{2}|\d{8})"
+)
+
+
+def _normalize_date(v: Optional[str], eu_priority: bool = False) -> Optional[str]:
+    """
+    Coerce any recognized date string to YYYY-MM-DD.
+
+    eu_priority=True promotes DD/MM/YYYY above MM/DD/YYYY for documents
+    originating from countries in _DD_MM_COUNTRIES.
+    """
+    if v is None:
+        return None
+    s = v.strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s  # already ISO — fast path
+
+    # Strip time component if present
+    m = _DATETIME_PREFIX.match(s)
+    date_str = (m.group(1) if m else s).strip()
+
+    slash_formats = _FORMATS_SLASH_EU if eu_priority else _FORMATS_SLASH_US
+    for fmt in _FORMATS_UNAMBIGUOUS + slash_formats:
+        try:
+            return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return v  # unrecognized — preserve original rather than lose data
+
+
+# ─── Models ───────────────────────────────────────────────────────────────────
 
 class Address(BaseModel):
     address_line: str = Field(..., description="Street address (including lines 1 & 2)")
     city: str
     state: str
     zip_code: str
+    country_code: Optional[str] = Field(
+        None,
+        description="ISO 3166-1 alpha-2 country code (e.g. 'US', 'FR', 'DE'). "
+                    "Infer from the address or document header."
+    )
     phone: Optional[str] = None
 
 
@@ -28,33 +120,6 @@ class DocumentReference(BaseModel):
     reference_value: str
 
 
-_DATE_FORMATS = [
-    "%Y-%m-%d",       # ISO 8601 — preferred
-    "%d-%b-%Y",       # 30-MAR-2026
-    "%d %b %Y",       # 30 MAR 2026
-    "%m/%d/%Y",       # 03/30/2026
-    "%m/%d/%y",       # 03/30/26
-    "%d/%m/%Y",       # 30/03/2026
-    "%B %d, %Y",      # March 30, 2026
-    "%d-%m-%Y",       # 30-03-2026
-]
-
-
-def _normalize_date(v: Optional[str]) -> Optional[str]:
-    """Coerce any recognized date string to YYYY-MM-DD; leave times unchanged."""
-    if v is None:
-        return None
-    # Already ISO or a time value — pass through
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", v):
-        return v
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(v.strip(), fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    return v  # unrecognized format: keep as-is rather than losing data
-
-
 class LogisticsDates(BaseModel):
     document_date: Optional[str] = Field(None, description="The generic date printed at the top of the form")
     dispatch_or_ship_date: Optional[str] = Field(None, description="Look specifically for 'Dispatch Date' or 'Ship Date'")
@@ -66,6 +131,8 @@ class LogisticsDates(BaseModel):
     @field_validator("document_date", "dispatch_or_ship_date", "delivery_date", mode="before")
     @classmethod
     def normalize_dates(cls, v):
+        # Fallback normalizer (no locale context here — locale-aware pass
+        # happens in UnifiedBOL.apply_locale_dates before this runs).
         return _normalize_date(v)
 
 
@@ -99,7 +166,7 @@ class LineItem(BaseModel):
 
 class UnifiedBOL(BaseModel):
     """
-    Unified Pydantic model for logistics extraction.
+    Unified Pydantic V2 model for logistics extraction.
     Strictly follows the technical specification for field naming and types.
     """
     # Document Metadata & Operational Numbers
@@ -109,7 +176,15 @@ class UnifiedBOL(BaseModel):
     order_number: Optional[str] = Field(None, description="Look for 'Order#', proprietary order patterns, or supplier-specific references")
     web_id: Optional[str] = Field(None, description="Look for 'Web ID#'")
     master_bol_indicator: bool = False
-    
+
+    # Document locale — drives unambiguous date parsing for slash-format dates
+    origin_country_code: Optional[str] = Field(
+        None,
+        description="ISO 3166-1 alpha-2 code for the country where this document originates "
+                    "(typically the shipper's country). E.g. 'US', 'FR', 'DE', 'NL'. "
+                    "Infer from the shipper address or document header."
+    )
+
     # Dates & Times
     logistics_dates: Optional[LogisticsDates] = None
 
@@ -143,6 +218,36 @@ class UnifiedBOL(BaseModel):
     grand_total_handling_units: int
     shipper_signature_present: bool = False
     carrier_signature_present: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_locale_dates(cls, data: Any) -> Any:
+        """
+        Runs before field validators. Normalizes all date fields in logistics_dates
+        using the document's locale so slash-format ambiguity (MM/DD vs DD/MM) is
+        resolved correctly before LogisticsDates.normalize_dates sees the value.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Resolve origin country: explicit field wins, then fall back to shipper address
+        country = (data.get("origin_country_code") or "").upper()
+        if not country:
+            shipper = data.get("shipper")
+            if isinstance(shipper, dict):
+                addr = shipper.get("address")
+                if isinstance(addr, dict):
+                    country = (addr.get("country_code") or "").upper()
+
+        eu_priority = country in _DD_MM_COUNTRIES
+
+        ld = data.get("logistics_dates")
+        if isinstance(ld, dict):
+            for field in ("document_date", "dispatch_or_ship_date", "delivery_date"):
+                if ld.get(field):
+                    ld[field] = _normalize_date(ld[field], eu_priority=eu_priority)
+
+        return data
 
     @field_validator("temperature_setpoint_fahrenheit", "grand_total_weight_lbs", mode="before")
     @classmethod
