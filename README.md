@@ -1,6 +1,6 @@
-# IBIS BOL Extractor
+# IBIS Logistics Extractor
 
-A production-grade logistics extraction platform that converts unstructured, highly variable Bills of Lading (BOLs), Delivery Notes, and Master BOLs into strict, validated JSON data using Gemini Vision AI.
+A production-grade logistics extraction platform that auto-detects the document type and converts unstructured freight documents — Bills of Lading (BOLs), Delivery Notes, Sea Freight Cartage Advice, and more — into strict, validated JSON data using Gemini Vision AI.
 
 ## Engineering and Business Judgment
 
@@ -16,7 +16,7 @@ Rather than scraping the document left-to-right, the pipeline acts as an expert 
 
 ### 2. How We Structure It (Designing for Resilience)
 
-The data is mapped into a single UnifiedBOL Pydantic schema, designed to handle extreme variation across LTL, Truckload, Ocean, and Master BOLs:
+Documents are auto-classified and routed to a type-specific Pydantic schema (`UnifiedBOL`, `CartageAdvice`, or a best-effort `GenericDocument` fallback), designed to handle extreme variation across LTL, Truckload, Ocean, and Master BOLs:
 
 *   **Granular Inventory Decoupling**: Adhering to GS1 US supply chain standards, the schema separates handling_unit_qty (what the forklift moves, e.g., pallets) from package_qty (the inner units, e.g., cartons) to prevent warehouse receiving miscounts.
 *   **Flexible Catch-All Arrays**: Real-world shippers invent custom reference labels daily. The schema uses a dynamic other_references array to capture unexpected identifiers as key-value pairs, ensuring the database never breaks on unseen PDF formats.
@@ -24,11 +24,12 @@ The data is mapped into a single UnifiedBOL Pydantic schema, designed to handle 
 
 ## Technical Architecture
 
-The system uses a Consolidated 3-Phase Vision Pipeline:
+The system uses a two-pass Vision Pipeline:
 
-1.  **High-Fidelity Normalization**: Uses `fitz` (PyMuPDF) to rasterize PDF pages (pages 1 and 2) into 300 DPI JPEG buffers. This is the optimal resolution for Vision-LLMs to read fine print like NMFC codes without exceeding token limits.
-2.  **Sanitization and Structured Orchestration**: Uses Gemini in Structured Output mode. The pipeline bypasses standard SDKs for direct REST calls, resolving Pydantic schema references into the pure JSON Schema Gemini requires.
-3.  **Validation and Integrity**: A Pydantic v2 layer enforces strict data types (numeric weights, ISO 8601 dates with locale-aware slash-format resolution, English-only field names) before the API responds.
+1.  **High-Fidelity Normalization**: Uses `fitz` (PyMuPDF) to rasterize PDF pages (pages 1 and 2) into 300 DPI JPEG buffers — optimal for Vision-LLMs reading fine print like NMFC codes without exceeding token limits.
+2.  **Document Classification (Pass 1)**: A lightweight Gemini call returns the document type (`bol`, `cartage_advice`, or `unknown`). Fast and cheap — no schema enforcement.
+3.  **Structured Extraction (Pass 2)**: A schema registry maps the detected type to its Pydantic model and system prompt. Gemini is called with structured output enforced via `responseSchema`. Direct REST calls bypass the SDK for full payload control.
+4.  **Validation and Integrity**: A Pydantic v2 layer enforces strict data types (numeric weights, ISO 8601 dates with locale-aware slash-format resolution, English-only field names) before the API responds.
 
 ## Quickstart
 
@@ -45,99 +46,46 @@ pip install -r requirements.txt
 export GEMINI_API_KEY="your_api_key_here"
 
 # Start the server (Local Development)
-python3 -m uvicorn api.extract:app --reload
+python3 -m uvicorn api:app --reload
 ```
 The UI will be available at `http://127.0.0.1:8000`.
 
 ## API Reference
 
-### POST /extract-bol
-Accepts a multipart/form-data upload of a PDF or image (PNG, JPG, WEBP) and returns a validated JSON object.
+### POST /extract *(recommended)*
 
-#### Response Schema (UnifiedBOL)
+Accepts a multipart/form-data upload of a PDF or image (PNG, JPG, WEBP). Auto-detects the document type and returns a typed JSON envelope.
+
+```bash
+curl -X POST "https://ibis-bol-extractor.vercel.app/api/extract" \
+     -F "file=@your_document.pdf" | jq
+```
+
+#### Response Envelope
+
 ```json
 {
-  "bol_number": "06141411234567890",
-  "pro_number": null,
-  "waybill_number": null,
-  "order_number": "PO-998877",
-  "web_id": null,
-  "master_bol_indicator": false,
-  "origin_country_code": "US",
-  "logistics_dates": {
-    "document_date": "2026-03-30",
-    "dispatch_or_ship_date": "2026-03-30",
-    "delivery_date": null,
-    "appointment_time": null,
-    "arrival_time": null,
-    "leaving_time": null
-  },
-  "shipper": {
-    "name": "ACME FOODS INC",
-    "address": {
-      "address_line": "123 WAREHOUSE BLVD",
-      "city": "CHICAGO",
-      "state": "IL",
-      "zip_code": "60601",
-      "country_code": "US",
-      "phone": "+1-312-555-0100"
-    }
-  },
-  "consignee": {
-    "name": "METRO DISTRIBUTION CENTER",
-    "address": {
-      "address_line": "456 RECEIVING DR",
-      "city": "DALLAS",
-      "state": "TX",
-      "zip_code": "75201",
-      "country_code": "US",
-      "phone": null
-    }
-  },
-  "third_party_bill_to": null,
-  "carrier_name": "XPO Logistics",
-  "scac_code": "XPOL",
-  "vessel_name": null,
-  "voyage_number": null,
-  "container_number": null,
-  "seal_number": null,
-  "temperature_setpoint_fahrenheit": 34.0,
-  "temperature_recorder_number": "TR-20045",
-  "line_items": [
-    {
-      "handling_unit_qty": 5,
-      "handling_unit_type": "PLT",
-      "package_qty": 60,
-      "package_type": "Cartons",
-      "weight_lbs": 2000.0,
-      "item_description": "FROZEN SEAFOOD - SHRIMP",
-      "article_or_item_number": "SHR-001",
-      "best_before_or_expiration_date": "2026-09-01",
-      "frozen_date": "2026-01-15",
-      "batch_lot_number_or_supplier_ref": "LOT-4421",
-      "nmfc_code": "155240",
-      "freight_class": 70.0,
-      "is_hazardous": false,
-      "un_number": null
-    }
-  ],
-  "other_references": [
-    { "reference_label": "Plan#", "reference_value": "PLN-88123" },
-    { "reference_label": "Customer Reference", "reference_value": "CUST-REF-2290" }
-  ],
-  "grand_total_weight_lbs": 2000.0,
-  "grand_total_handling_units": 5,
-  "shipper_signature_present": true,
-  "carrier_signature_present": false,
+  "document_type": "bol | cartage_advice | unknown",
+  "data": { ... },
   "_pipeline": {
     "processing_time_ms": 14500,
     "pages_processed": 2,
-    "model": "Gemini Flash-Lite",
+    "model": "Gemini 3.1 Flash-Lite",
     "request_id": "b3d2f1a0-9c4e-4f8b-a123-0e1f2d3c4b5a"
   }
 }
 ```
-Note: The `_pipeline` object contains telemetry for latency and request tracing.
+
+The `data` field contains a typed schema depending on `document_type`:
+- **`bol`** → `UnifiedBOL` (BOL number, shipper, consignee, line items, weights, signatures, cold-chain metadata…)
+- **`cartage_advice`** → `CartageAdvice` (container, consol, routing legs, available date…)
+- **`unknown`** → `{ "fields": { ... } }` (best-effort flat extraction)
+
+See [`docs/API.md`](docs/API.md) for the full schema reference.
+
+### POST /extract-bol *(legacy)*
+
+Always extracts using the `UnifiedBOL` schema regardless of document type. Kept for backward compatibility. Returns a flat `UnifiedBOL` object with a `_pipeline` block.
 
 ## Deployment
 

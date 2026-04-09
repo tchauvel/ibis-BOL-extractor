@@ -10,7 +10,7 @@ The repository is configured for Vercel out-of-the-box using the consolidated st
 1. Connect your GitHub repository to Vercel.
 2. Add the following Environment Variables:
    - GEMINI_API_KEY: Your Google AI Studio API Key.
-3. Deploy. Vercel will automatically detect the vercel.json and serve the FastAPI backend through the /api/extract.py handler.
+3. Deploy. Vercel will automatically detect the vercel.json and serve the FastAPI backend through `api/extract.py` (the thin Vercel handler that imports the real app from `api/__init__.py`).
 
 > [!IMPORTANT]
 > **Timeout Configuration**: Our vercel.json is set to maxDuration: 60. If you encounter timeouts on a free account, try processing smaller documents or upgrading to Pro.
@@ -28,7 +28,7 @@ export GEMINI_API_KEY="your_key_here"
 pip install -r requirements.txt
 
 # Start Server
-python3 -m uvicorn api.extract:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
 ## 3. Agentic Deployment (MCP)
@@ -71,7 +71,7 @@ Replace `/path/to/ibis-pdf-extractor` with the absolute path to the project root
 **4. Restart Claude Desktop.**
 
 The following tools will now be available:
-- **`extract_logistics_data`** — Pass a local file path (PDF, PNG, JPG, WEBP) to extract a full `UnifiedBOL` JSON object.
+- **`extract_logistics_data`** — Pass a local file path (PDF, PNG, JPG, WEBP) to extract structured JSON. Returns a typed result based on the detected document type (`UnifiedBOL`, `CartageAdvice`, or best-effort flat extraction).
 - **`get_logistics_schema`** — Returns the full `UnifiedBOL` JSON schema so Claude understands the available fields.
 
 ### Steps for Cursor
@@ -80,4 +80,4 @@ Add the same block under `mcpServers` in your Cursor MCP settings (`~/.cursor/mc
 
 ## 4. Production Considerations
 - **Memory**: Minimum 1GB RAM recommended for PDF rasterization.
-- **Security**: The UI uses a strict Content Security Policy (CSP). If adding external scripts, update the middleware in /api/extract.py.
+- **Security**: The UI uses a strict Content Security Policy (CSP). If adding external scripts, update the middleware in `api/__init__.py`.
