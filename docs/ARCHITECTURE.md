@@ -15,8 +15,6 @@ Each request through `/extract` runs two sequential Gemini Vision calls:
 1. **Pass 1 (Classification)** — lightweight plain-text call; returns one of `bol`, `cartage_advice`, or `unknown`
 2. **Pass 2 (Extraction)** — structured output call using the schema and system prompt matched to the detected type
 
-The `/extract-bol` endpoint (legacy) skips Pass 1 and always runs Pass 2 with the `UnifiedBOL` schema.
-
 ---
 
 ## Phase 1: High-Fidelity Normalization (`api/lib/extraction.py`)
@@ -89,6 +87,6 @@ No changes to `extraction.py`, `api/__init__.py`, or any existing schemas are re
 
 ## Entry Points
 
-1. **FastAPI Application (`api/__init__.py`)**: Real FastAPI app with rate limiting (`slowapi`), security headers, request tracing (`X-Request-ID`), and endpoint routing. Exposes `/extract` (recommended), `/api/extract` (Vercel alias), `/extract-bol` (legacy), and `/api/extract-bol` (legacy alias).
+1. **FastAPI Application (`api/__init__.py`)**: Real FastAPI app with rate limiting (`slowapi`), security headers, request tracing (`X-Request-ID`), and endpoint routing. Exposes `/extract` and `/api/extract` (Vercel alias).
 2. **Vercel Handler (`api/extract.py`)**: Thin wrapper — imports the app and re-exports it as `handler` for Vercel's serverless runtime.
 3. **MCP Server (`mcp_server.py`)**: Agentic integration for Claude Desktop and Cursor, enabling local document audits via natural language.
